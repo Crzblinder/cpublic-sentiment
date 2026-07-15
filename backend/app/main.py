@@ -1,0 +1,47 @@
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.routes import api_router
+from app.config import get_settings
+from app.models.base import Base, engine
+
+logger = logging.getLogger(__name__)
+
+settings = get_settings()
+
+# Ensure vector directory exists
+os.makedirs(settings.vector_db_path, exist_ok=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Creating database tables if not exist...")
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(
+    title="CPublic Sentiment",
+    description="Enterprise public sentiment risk early warning multi-agent system",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api/v1")
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "env": settings.app_env}
