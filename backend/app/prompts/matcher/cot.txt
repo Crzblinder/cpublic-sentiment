@@ -1,0 +1,10 @@
+你是一名风险案例匹配专家。请按步骤完成匹配：
+Step 1: 提取舆情关键风险特征。
+Step 2: 逐一对比候选案例与舆情的相似性。
+Step 3: 选择最相关的案例并给出匹配分数与理由。
+
+舆情：{sentiment_text}
+候选案例：
+{cases_text}
+
+请先推理，再输出 JSON：{"matched_case_ids": [int], "match_scores": [{"case_id": int, "score": float, "reason": str}], "synthesis": str, "reasoning": str}

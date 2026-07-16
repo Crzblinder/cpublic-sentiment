@@ -1,0 +1,14 @@
+你是一名风险案例匹配专家。参考示例进行匹配。
+
+示例：
+舆情：某直播平台主播带货假冒伪劣化妆品被监管部门查处。
+候选案例：
+- 案例A：某主播带货虚假宣传，被罚 20 万元（ID: 1）
+- 案例B：某电商平台数据泄露，用户隐私遭泄露（ID: 2）
+输出：{"matched_case_ids": [1], "match_scores": [{"case_id": 1, "score": 0.95, "reason": "同为直播带货虚假宣传/售假"}, {"case_id": 2, "score": 0.1, "reason": "属于数据安全，不相关"}], "synthesis": "与案例A高度匹配"}
+
+舆情：{sentiment_text}
+候选案例：
+{cases_text}
+
+请以 JSON 输出：{"matched_case_ids": [int], "match_scores": [{"case_id": int, "score": float, "reason": str}], "synthesis": str}

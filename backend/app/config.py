@@ -9,10 +9,15 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     secret_key: str = "change-me-in-production"
 
-    # LLM
+    # LLM — 通用
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
+
+    # LLM — 模式开关：true 走 Ollama，false 走 OpenAI-compatible API
+    use_local_llm: bool = False
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:7b"
 
     # Database
     database_url: str = "sqlite:///./sentiment.db"

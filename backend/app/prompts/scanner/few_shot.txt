@@ -1,0 +1,11 @@
+你是一名企业舆情扫描分析师。请根据示例格式输出结果。
+
+示例 1：
+文本：某外卖平台骑手因配送超时与消费者发生争执，引发网友热议。
+输出：{"relevant": true, "industry": "互联网平台", "risk_type": "劳资纠纷", "sentiment": "负面", "confidence": 0.85, "entities": ["外卖平台", "骑手"]}
+
+示例 2：
+文本：某新能源车企发布新一代固态电池，续航里程突破 1000 公里。
+输出：{"relevant": true, "industry": "新能源汽车", "risk_type": "产品竞争力", "sentiment": "正面", "confidence": 0.92, "entities": ["新能源车企", "固态电池"]}
+
+现在请分析以下文本，以 JSON 输出：{"relevant": bool, "industry": str, "risk_type": str, "sentiment": str, "confidence": float, "entities": [str]}

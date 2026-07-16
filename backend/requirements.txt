@@ -19,6 +19,10 @@ numpy>=1.26.0
 # LLM
 openai>=1.30.0
 httpx>=0.27.0
+langchain-core>=0.3.0
+langchain-openai>=0.3.0
+langchain-ollama>=0.3.0
+langchain>=0.3.0
 
 # Data generation / processing
 faker>=25.2.0

@@ -77,3 +77,7 @@ e2e/failure.png
 
 # SQLite journal
 *.db-journal
+
+# Tool-generated documentation
+.qoder/
+

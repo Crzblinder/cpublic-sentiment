@@ -1,20 +1,10 @@
 from typing import Any
 
 from app.agents.base import BaseAgent
-from app.agents.prompts import PROMPT_VARIANTS
 
 
 class GovernanceAgent(BaseAgent):
     name = "governance"
-
-    def _get_prompt(self) -> str:
-        for variant in PROMPT_VARIANTS:
-            if variant["agent_type"] == self.name and variant["name"] == self.prompt_variant:
-                return variant["template"]
-        for variant in PROMPT_VARIANTS:
-            if variant["agent_type"] == self.name and variant["is_baseline"]:
-                return variant["template"]
-        raise ValueError(f"No prompt variant found for {self.name}")
 
     def _simulate_response(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         risk_level = "中"
@@ -54,9 +44,10 @@ class GovernanceAgent(BaseAgent):
         sentiment_text = context.get("sentiment_text", "")
         risk_level = context.get("risk_level", "中")
         playbook = context.get("playbook", "")
-        system_prompt = self._get_prompt()
+        template = self._load_prompt()
+        system_prompt = template
         user_prompt = (
-            system_prompt.replace("{sentiment_text}", sentiment_text)
+            template.replace("{sentiment_text}", sentiment_text)
             .replace("{risk_level}", risk_level)
             .replace("{playbook}", playbook)
         )

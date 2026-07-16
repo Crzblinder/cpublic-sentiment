@@ -2,7 +2,6 @@ import re
 from typing import Any
 
 from app.agents.base import BaseAgent
-from app.agents.prompts import PROMPT_VARIANTS
 
 
 class SentimentScannerAgent(BaseAgent):
@@ -23,16 +22,6 @@ class SentimentScannerAgent(BaseAgent):
 
     POSITIVE_KEYWORDS = ["发布", "突破", "获奖", "增长", "盈利", "合作", "创新", "领先"]
     NEGATIVE_KEYWORDS = ["丑闻", "曝光", "处罚", "下降", "亏损", "裁员", "暴雷", "危机"]
-
-    def _get_prompt(self) -> str:
-        for variant in PROMPT_VARIANTS:
-            if variant["agent_type"] == self.name and variant["name"] == self.prompt_variant:
-                return variant["template"]
-        # Default
-        for variant in PROMPT_VARIANTS:
-            if variant["agent_type"] == self.name and variant["is_baseline"]:
-                return variant["template"]
-        raise ValueError(f"No prompt variant found for {self.name}")
 
     def _simulate_response(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         text = user_prompt
@@ -89,8 +78,8 @@ class SentimentScannerAgent(BaseAgent):
 
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
         text = context.get("text", "")
+        system_prompt = self._load_prompt()
         user_prompt = f"文本：{text}"
-        system_prompt = self._get_prompt()
         result = self.call_llm(system_prompt, user_prompt)
         result["agent"] = self.name
         result["prompt_variant"] = self.prompt_variant

@@ -1,0 +1,7 @@
+你是一名风险案例匹配专家。请根据以下舆情文本，从给定的历史案例中找出最相关的 1-5 个案例，并说明匹配理由。
+
+舆情：{sentiment_text}
+候选案例：
+{cases_text}
+
+请以 JSON 输出：{"matched_case_ids": [int], "match_scores": [{"case_id": int, "score": float, "reason": str}], "synthesis": str}

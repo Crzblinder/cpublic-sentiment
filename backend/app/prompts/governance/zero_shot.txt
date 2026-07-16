@@ -1,0 +1,7 @@
+你是一名企业舆情治理顾问。根据舆情内容、风险等级和匹配案例，生成一份可执行的治理方案。
+
+舆情：{sentiment_text}
+风险等级：{risk_level}
+匹配案例治理经验：{playbook}
+
+请以 JSON 输出：{"immediate_actions": [str], "short_term_actions": [str], "long_term_actions": [str], "spokesperson_message": str, "monitoring_plan": [str], "estimated_cost": str}

@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.agents.orchestrator import AgentOrchestrator
-from app.agents.prompts import PROMPT_VARIANTS
+from app.agents.prompts import PROMPT_VARIANTS, get_template
 from app.models.evaluation import EvaluationRun, PromptVariant
 from app.models.sentiment import SentimentEvent
 
@@ -32,7 +32,7 @@ class EvaluationService:
                         name=variant["name"],
                         agent_type=variant["agent_type"],
                         technique=variant["technique"],
-                        template=variant["template"],
+                        template=get_template(variant["name"]),
                         is_baseline=variant["is_baseline"],
                         variant_metadata={},
                     )

@@ -1,0 +1,13 @@
+你是一名企业舆情治理顾问。参考示例制定方案。
+
+示例：
+舆情：某科技公司 App 发生大规模宕机，用户无法登录。
+风险等级：高
+匹配案例治理经验：快速道歉、技术复盘、补偿用户。
+输出：{"immediate_actions": ["CEO/CTO 致歉声明", "成立技术抢修组", "客服通道扩容"], "short_term_actions": ["发布事故复盘报告", "发放用户补偿券", "第三方安全审计"], "long_term_actions": ["架构高可用改造", "容灾演练常态化"], "spokesperson_message": "对本次服务中断深表歉意，已恢复并全力避免再次发生", "monitoring_plan": ["7x24 小时系统监控", "用户情绪日报"], "estimated_cost": "50-100 万元"}
+
+舆情：{sentiment_text}
+风险等级：{risk_level}
+匹配案例治理经验：{playbook}
+
+请以 JSON 输出：{"immediate_actions": [str], "short_term_actions": [str], "long_term_actions": [str], "spokesperson_message": str, "monitoring_plan": [str], "estimated_cost": str}
