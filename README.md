@@ -1,6 +1,6 @@
 # CPublic Sentiment — 企业舆情风险预警 Multi-Agent 系统
 
-[![CI](https://github.com/your-org/cpublic-sentiment/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/cpublic-sentiment/actions/workflows/ci.yml)
+[![CI](https://github.com/Crzblinder/cpublic-sentiment/actions/workflows/ci.yml/badge.svg)](https://github.com/Crzblinder/cpublic-sentiment/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > 从"舆情被动响应"重构为"主动风险预警"的开源智能体项目。
@@ -24,28 +24,32 @@ CPublic Sentiment 面向企业风控场景，构建 **Multi-Agent 协同架构**
 ## 技术栈
 
 - **后端**：Python 3.11、FastAPI、SQLAlchemy、Pydantic
-- **智能体**：自研轻量 Agent 编排器，OpenAI-compatible LLM + 确定性降级
+- **智能体**：LangChain 统一调用层，支持 OpenAI-compatible LLM + 本地 Ollama 双模式 + 确定性降级
 - **RAG**：ChromaDB + `BAAI/bge-small-zh-v1.5` 中文 Embedding
 - **数据库**：MySQL 8（默认 Docker）/ SQLite（本地快速启动）
 - **前端**：React 18 + TypeScript + Vite
-- **部署**：Docker Compose 一键启动
+- **部署**：Docker Compose 一键启动（云端 API / 本地 Ollama 双轨制）
 - **测试**：pytest + Playwright
 
 ---
 
 ## 快速开始
 
-### 方式一：Docker Compose（推荐）
+> 系统支持两种大模型运行模式，请根据你的环境选择：
+
+### 路线 A：云端 API 模式（有 API Key）
+
+适用场景：有 OpenAI 或兼容 API Key，追求最高推理质量。
 
 ```bash
-# 1. 复制环境变量
+# 1. 复制环境变量并填入 API Key
 cp .env.example .env
-# 编辑 .env，填入 OPENAI_API_KEY（可选，未填时使用确定性降级仍可运行）
+# 编辑 .env，填入 OPENAI_API_KEY（留空则自动使用确定性降级，仍可运行）
 
-# 2. 启动全部服务
+# 2. 一键启动
 docker compose up --build -d
 
-# 3. 等待 MySQL 健康后，初始化数据
+# 3. 初始化数据（首次运行）
 docker exec sentiment_backend python scripts/init_db.py
 docker exec sentiment_backend python scripts/seed_data.py
 
@@ -54,7 +58,26 @@ docker exec sentiment_backend python scripts/seed_data.py
 # API 文档：http://localhost:8000/docs
 ```
 
-### 方式二：本地开发（Windows / macOS / Linux）
+### 路线 B：本地 Ollama 模式（零成本免密）
+
+适用场景：无 API Key、内网环境、希望完全本地化运行。
+
+```bash
+# 1. 复制环境变量并开启本地模式
+cp .env.example .env
+# 编辑 .env，取消注释 USE_LOCAL_LLM=true
+
+# 2. 一键启动（含 Ollama 服务 + 自动拉取中文模型 qwen2.5:7b）
+make docker-up-ollama
+# 或直接执行：
+# docker compose -f docker-compose.yml -f docker-compose.ollama.yml up --build -d
+
+# 3. 等待 Ollama 拉取模型完成（首次约 4-5 GB），访问同上
+```
+
+> 推荐模型：`qwen2.5:7b`（中文能力强，7B 参数量适合消费级 GPU）。如需更换模型，修改 `docker-compose.ollama.yml` 中的 `OLLAMA_MODEL` 环境变量。
+
+### 本地开发（不使用 Docker）
 
 ```bash
 # 后端
@@ -90,17 +113,20 @@ bash scripts/start_local.sh
 .
 ├── backend/
 │   ├── app/
-│   │   ├── agents/          # 四 agents + orchestrator + 13 prompts
+│   │   ├── agents/          # 四 agents + orchestrator
 │   │   ├── api/             # REST API
 │   │   ├── data/            # 220 企业 / 520 案例生成器
+│   │   ├── llm/             # LangChain LLM 工厂（OpenAI / Ollama 双模式）
 │   │   ├── models/          # SQLAlchemy 数据模型
+│   │   ├── prompts/         # 外置提示词模板（.txt，可直接编辑定制）
 │   │   ├── rag/             # Embedding / Chroma / 混合检索
 │   │   └── services/        # 业务逻辑
 │   ├── scripts/             # init_db / seed_data
 │   └── tests/               # pytest 测试
 ├── frontend/                # React + Vite 仪表盘
 ├── e2e/                     # Playwright 端到端冒烟测试
-├── docker-compose.yml       # MySQL + Backend + Frontend
+├── docker-compose.yml       # MySQL + Backend + Frontend（云端 API 模式）
+├── docker-compose.ollama.yml # Ollama 叠加编排（本地免密模式）
 ├── Makefile                 # 常用命令
 └── .github/workflows/ci.yml # GitHub Actions CI
 ```
@@ -209,18 +235,45 @@ curl -X POST http://localhost:8000/api/v1/evaluation/ab-test \
 
 ## 配置
 
-复制 `.env.example` 为 `.env`，主要配置项：
+复制 `.env.example` 为 `.env`，根据所选运行模式配置对应区块：
 
 ```env
-OPENAI_API_KEY=sk-xxx          # 可选，未填则使用确定性降级
+# 通用参数（两种模式均需配置）
+DATABASE_URL=mysql+pymysql://sentiment:sentiment@mysql:3306/sentiment?charset=utf8mb4
+VECTOR_DB_PATH=./chroma_data
+
+# 路线 A：云端 API 模式
+USE_LOCAL_LLM=false          # 默认值，可省略
+OPENAI_API_KEY=sk-xxx        # 留空则使用确定性降级
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o-mini
 
-DATABASE_URL=mysql+pymysql://sentiment:sentiment@mysql:3306/sentiment?charset=utf8mb4
-VECTOR_DB_PATH=./chroma_data
+# 路线 B：本地 Ollama 模式
+USE_LOCAL_LLM=true           # 开启本地模式
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
 ```
 
-> 未配置 `OPENAI_API_KEY` 时，系统仍可通过规则引擎正常运行，方便本地体验与 CI。
+> 未配置任何 LLM 时，系统仍可通过内置规则引擎正常运行（确定性降级），方便本地体验与 CI。
+
+---
+
+## 提示词定制
+
+所有 Agent 的系统提示词已完全外置为独立文本文件，存放在 `backend/app/prompts/` 目录：
+
+```
+backend/app/prompts/
+├── scanner/      # 舆情扫描 Agent
+│   ├── zero_shot.txt
+│   ├── cot.txt
+│   └── few_shot.txt
+├── matcher/      # 案例匹配 Agent
+├── predictor/    # 风险预测 Agent
+└── governance/   # 治理方案 Agent
+```
+
+如需调整某个 Agent 的推理逻辑或输出格式，**直接编辑对应的 `.txt` 文件即可**，无需修改任何 Python 源码。修改后重启后端服务即可生效。
 
 ---
 
