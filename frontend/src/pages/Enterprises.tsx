@@ -9,10 +9,14 @@ function riskDot(score: number) {
   return '#16a34a'
 }
 
+const REGIONS = ['北京', '上海', '广东', '浙江', '江苏', '四川', '湖北', '山东']
+
 export default function Enterprises() {
   const [enterprises, setEnterprises] = useState<EnterpriseItem[]>([])
   const [total, setTotal] = useState(0)
   const [industry, setIndustry] = useState('')
+  const [region, setRegion] = useState('')
+  const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<EnterpriseDetail | null>(null)
@@ -21,10 +25,16 @@ export default function Enterprises() {
   const pageSize = 12
 
   const load = useCallback((p = 0) => {
-    api.listEnterprises({ industry: industry || undefined, skip: p * pageSize, limit: pageSize })
+    api.listEnterprises({
+      industry: industry || undefined,
+      region: region || undefined,
+      search: search || undefined,
+      skip: p * pageSize,
+      limit: pageSize,
+    })
       .then((res) => { setEnterprises(res.items); setTotal(res.total) })
       .catch((e) => setError(e.message))
-  }, [industry])
+  }, [industry, region, search])
 
   useEffect(() => { load(0); setPage(0) }, [load])
 
@@ -36,7 +46,16 @@ export default function Enterprises() {
       .finally(() => setDetailLoading(false))
   }
 
+  const handleSearch = () => { load(0); setPage(0) }
+  const clearFilters = () => {
+    setIndustry('')
+    setRegion('')
+    setSearch('')
+    setPage(0)
+  }
+
   const maxPage = Math.ceil(total / pageSize)
+  const activeFilterCount = [industry, region, search].filter(Boolean).length
 
   return (
     <div>
@@ -45,14 +64,40 @@ export default function Enterprises() {
       {/* 筛选栏 */}
       <div className="card filter-bar">
         <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="搜索企业名称"
+          style={{ maxWidth: 220 }}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+        />
+        <input
           value={industry}
           onChange={(e) => setIndustry(e.target.value)}
           placeholder="行业筛选"
-          style={{ maxWidth: 220 }}
+          style={{ maxWidth: 160 }}
         />
-        <button className="btn" onClick={() => { load(0); setPage(0) }}>筛选</button>
+        <select
+          value={region}
+          onChange={(e) => { setRegion(e.target.value); setPage(0) }}
+          className="filter-select"
+        >
+          <option value="">全部地区</option>
+          {REGIONS.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <button className="btn" onClick={handleSearch}>筛选</button>
+        {activeFilterCount > 0 && (
+          <button className="btn btn-sm btn-outline" onClick={clearFilters}>清空</button>
+        )}
         <span className="muted-text" style={{ marginLeft: 'auto' }}>共 {total} 家企业</span>
       </div>
+
+      {activeFilterCount > 0 && (
+        <div className="filter-summary">
+          已启用 {activeFilterCount} 项筛选，找到 <strong>{total}</strong> 家企业
+        </div>
+      )}
 
       {error && <div className="error-banner">{error}</div>}
 

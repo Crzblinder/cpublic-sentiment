@@ -266,6 +266,56 @@ textarea {
   flex-wrap: wrap;
 }
 
+.search-with-suggestions {
+  position: relative;
+}
+
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 180px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+  overflow: hidden;
+}
+
+.suggestion-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.suggestion-item:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.filter-select {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--card);
+  color: var(--text);
+  min-width: 110px;
+}
+
+.filter-summary {
+  font-size: 13px;
+  color: var(--muted);
+  margin: -10px 0 14px;
+}
+
 .input-meta {
   display: flex;
   align-items: center;
@@ -308,6 +358,64 @@ textarea {
   font-weight: 700;
   color: var(--primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---- 效果评估页 ---- */
+.eval-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+
+.eval-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eval-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.eval-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eval-options .btn-sm {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.eval-dataset-preview {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.suggestion-card {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+
+.suggestion-card h3 {
+  color: #0369a1;
+}
+
+.suggestion-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #0c4a6e;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.suggestion-list li {
+  margin-bottom: 4px;
 }
 
 /* ---- Tables ---- */

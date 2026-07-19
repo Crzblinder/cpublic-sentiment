@@ -99,6 +99,7 @@ export const api = {
   listCases: (params?: {
     industry?: string
     risk_type?: string
+    risk_level?: string
     search?: string
     skip?: number
     limit?: number
@@ -106,6 +107,7 @@ export const api = {
     const qs = new URLSearchParams()
     if (params?.industry) qs.set('industry', params.industry)
     if (params?.risk_type) qs.set('risk_type', params.risk_type)
+    if (params?.risk_level) qs.set('risk_level', params.risk_level)
     if (params?.search) qs.set('search', params.search)
     qs.set('skip', String(params?.skip ?? 0))
     qs.set('limit', String(params?.limit ?? 20))
@@ -115,11 +117,15 @@ export const api = {
   /* ---- 企业画像 (分页) ---- */
   listEnterprises: (params?: {
     industry?: string
+    region?: string
+    search?: string
     skip?: number
     limit?: number
   }): Promise<PaginatedResponse<EnterpriseItem>> => {
     const qs = new URLSearchParams()
     if (params?.industry) qs.set('industry', params.industry)
+    if (params?.region) qs.set('region', params.region)
+    if (params?.search) qs.set('search', params.search)
     qs.set('skip', String(params?.skip ?? 0))
     qs.set('limit', String(params?.limit ?? 20))
     return request(`/enterprises?${qs.toString()}`)

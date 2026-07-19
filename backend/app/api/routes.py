@@ -164,6 +164,7 @@ def list_cases(
     limit: int = Query(20, ge=1, le=100),
     industry: str | None = None,
     risk_type: str | None = None,
+    risk_level: str | None = None,
     search: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -172,6 +173,8 @@ def list_cases(
         q = q.filter(RiskCase.industry == industry)
     if risk_type:
         q = q.filter(RiskCase.risk_type == risk_type)
+    if risk_level:
+        q = q.filter(RiskCase.risk_level == risk_level)
     if search:
         q = q.filter(RiskCase.title.contains(search))
     total = q.count()
@@ -200,11 +203,17 @@ def list_enterprises(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     industry: str | None = None,
+    region: str | None = None,
+    search: str | None = None,
     db: Session = Depends(get_db),
 ):
     q = db.query(Enterprise)
     if industry:
         q = q.filter(Enterprise.industry == industry)
+    if region:
+        q = q.filter(Enterprise.region == region)
+    if search:
+        q = q.filter(Enterprise.name.contains(search))
     total = q.count()
     enterprises = q.offset(skip).limit(limit).all()
     return {
