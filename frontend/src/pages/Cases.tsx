@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { CaseItem } from '../types'
 
@@ -19,7 +19,7 @@ export default function Cases() {
 
   const pageSize = 15
 
-  const load = (p = 0) => {
+  const load = useCallback((p = 0) => {
     api.listCases({
       industry: industry || undefined,
       risk_type: riskType || undefined,
@@ -29,9 +29,9 @@ export default function Cases() {
     })
       .then((res) => { setCases(res.items); setTotal(res.total) })
       .catch((e) => setError(e.message))
-  }
+  }, [industry, riskType, search])
 
-  useEffect(() => { load(0); setPage(0) }, [])
+  useEffect(() => { load(0); setPage(0) }, [load])
 
   const handleSearch = () => { load(0); setPage(0) }
   const maxPage = Math.ceil(total / pageSize)

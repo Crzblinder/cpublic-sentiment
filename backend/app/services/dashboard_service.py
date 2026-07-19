@@ -38,6 +38,17 @@ class DashboardService:
         )
         risk_distribution = [{"name": level or "未知", "value": count} for level, count in level_q]
 
+        # 风险类型分布
+        type_q = (
+            self.db.query(SentimentEvent.risk_type, func.count(SentimentEvent.id))
+            .filter(SentimentEvent.status == "processed", SentimentEvent.risk_type.isnot(None))
+            .group_by(SentimentEvent.risk_type)
+            .order_by(func.count(SentimentEvent.id).desc())
+            .limit(10)
+            .all()
+        )
+        risk_type_distribution = [{"name": rt or "未知", "value": count} for rt, count in type_q]
+
         # 行业分布（通过 enterprise_name 关联）
         industry_q = (
             self.db.query(Enterprise.industry, func.count(SentimentEvent.id))
@@ -99,6 +110,13 @@ class DashboardService:
             .scalar()
         )
 
+        # 平均风险评分
+        avg_score = (
+            self.db.query(func.avg(SentimentEvent.risk_score))
+            .filter(SentimentEvent.status == "processed")
+            .scalar()
+        )
+
         # 准确率
         labeled = (
             self.db.query(SentimentEvent)
@@ -108,15 +126,38 @@ class DashboardService:
         correct = sum(1 for e in labeled if e.is_correct == 1)
         accuracy = round(correct / max(len(labeled), 1), 3)
 
+        # 今日与近 7 天新增
+        now = datetime.now(UTC)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = now - timedelta(days=7)
+        today_count = (
+            self.db.query(func.count(SentimentEvent.id))
+            .filter(SentimentEvent.status == "processed", SentimentEvent.created_at >= today_start)
+            .scalar()
+        )
+        week_high_count = (
+            self.db.query(func.count(SentimentEvent.id))
+            .filter(
+                SentimentEvent.status == "processed",
+                SentimentEvent.created_at >= week_start,
+                SentimentEvent.risk_level.in_(["高", "极高"]),
+            )
+            .scalar()
+        )
+
         return {
             "summary": {
                 "total_events": total,
+                "today_events": today_count or 0,
+                "week_high_risk_events": week_high_count or 0,
                 "high_risk_ratio": high_risk_ratio,
+                "avg_risk_score": round(float(avg_score or 0), 3),
                 "avg_response_time_ms": round(float(avg_resp or 0), 1),
                 "accuracy": accuracy,
                 "labeled_count": len(labeled),
             },
             "risk_distribution": risk_distribution,
+            "risk_type_distribution": risk_type_distribution,
             "industry_distribution": industry_distribution,
             "top_enterprises": top_enterprises,
         }

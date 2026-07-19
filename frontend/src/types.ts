@@ -66,12 +66,16 @@ export interface Metrics {
 export interface DashboardStats {
   summary: {
     total_events: number
+    today_events: number
+    week_high_risk_events: number
     high_risk_ratio: number
+    avg_risk_score: number
     avg_response_time_ms: number
     accuracy: number
     labeled_count: number
   }
   risk_distribution: Array<{ name: string; value: number }>
+  risk_type_distribution: Array<{ name: string; value: number }>
   industry_distribution: Array<{ name: string; value: number }>
   top_enterprises: Array<{
     id: number

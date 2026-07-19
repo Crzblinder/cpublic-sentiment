@@ -111,7 +111,10 @@ async def run_analysis_stream(
     enterprise_hint: str | None = None,
     prompt_variants: dict[str, str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """异步流式执行舆情分析，逐步 yield 每个节点的结果更新。"""
+    """异步流式执行舆情分析，逐步 yield 每个节点的结果更新。
+
+    通过累加所有节点更新得到最终状态，避免再调用一次 graph.invoke 造成重复执行。
+    """
     start_time = time.time()
 
     graph = build_sentiment_graph(db, prompt_variants=prompt_variants)
@@ -124,18 +127,23 @@ async def run_analysis_stream(
         "stream_events": [],
     }
 
+    # 累加各节点更新以获得最终状态，避免额外 invoke
+    running_state: dict[str, Any] = dict(initial_state)
+
     async for event in graph.astream(initial_state, stream_mode="updates"):
+        for update in event.values():
+            if isinstance(update, dict):
+                running_state.update(update)
         elapsed_ms = int((time.time() - start_time) * 1000)
         yield {
             "node_update": event,
             "elapsed_ms": elapsed_ms,
         }
 
-    # 最终完整结果
-    final_state = graph.invoke(initial_state)
+    # 最终完整结果直接从累加状态生成
     elapsed_ms = int((time.time() - start_time) * 1000)
     yield {
-        "final_result": _format_result(final_state, elapsed_ms, prompt_variants),
+        "final_result": _format_result(running_state, elapsed_ms, prompt_variants),
         "elapsed_ms": elapsed_ms,
     }
 

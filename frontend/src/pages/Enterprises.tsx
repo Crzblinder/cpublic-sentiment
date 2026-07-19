@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LineChart, Line, ResponsiveContainer } from 'recharts'
 import { api } from '../api'
 import type { EnterpriseItem, EnterpriseDetail } from '../types'
@@ -20,13 +20,13 @@ export default function Enterprises() {
 
   const pageSize = 12
 
-  const load = (p = 0) => {
+  const load = useCallback((p = 0) => {
     api.listEnterprises({ industry: industry || undefined, skip: p * pageSize, limit: pageSize })
       .then((res) => { setEnterprises(res.items); setTotal(res.total) })
       .catch((e) => setError(e.message))
-  }
+  }, [industry])
 
-  useEffect(() => { load(0); setPage(0) }, [])
+  useEffect(() => { load(0); setPage(0) }, [load])
 
   const openDetail = (id: number) => {
     setDetailLoading(true)

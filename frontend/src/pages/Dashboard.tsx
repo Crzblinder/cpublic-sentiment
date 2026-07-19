@@ -42,8 +42,20 @@ export default function Dashboard() {
           <div className="stat-value">{s?.total_events ?? '-'}</div>
         </div>
         <div className="stat-card">
+          <div className="stat-label">今日新增</div>
+          <div className="stat-value">{s?.today_events ?? '-'}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">近 7 天高风险</div>
+          <div className="stat-value">{s?.week_high_risk_events ?? '-'}</div>
+        </div>
+        <div className="stat-card">
           <div className="stat-label">高风险占比</div>
           <div className="stat-value">{s ? `${(s.high_risk_ratio * 100).toFixed(1)}%` : '-'}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">平均风险分</div>
+          <div className="stat-value">{s ? s.avg_risk_score.toFixed(2) : '-'}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">平均响应时间</div>
@@ -52,6 +64,10 @@ export default function Dashboard() {
         <div className="stat-card">
           <div className="stat-label">系统准确率</div>
           <div className="stat-value">{s ? `${(s.accuracy * 100).toFixed(1)}%` : '-'}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">已标注样本</div>
+          <div className="stat-value">{s?.labeled_count ?? '-'}</div>
         </div>
       </div>
 
@@ -125,6 +141,26 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* 风险类型分布 */}
+        <div className="card chart-card">
+          <h3>风险类型 TOP10</h3>
+          {stats?.risk_type_distribution?.length ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={stats.risk_type_distribution} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 12 }} width={80} />
+                <Tooltip />
+                <Bar dataKey="value" fill={BAR_COLOR} radius={[0, 4, 4, 0]} name="事件数" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="chart-empty">暂无数据</div>
+          )}
+        </div>
+      </div>
+
+      <div className="chart-row">
         {/* TOP10 高风险企业 */}
         <div className="card chart-card">
           <h3>TOP 10 高风险企业</h3>

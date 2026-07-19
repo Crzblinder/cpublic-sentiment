@@ -43,5 +43,5 @@ docker-down-ollama:
 	docker compose -f docker-compose.yml -f docker-compose.ollama.yml down
 
 lint:
-	cd backend && ruff check app tests
+	cd backend && python -m ruff check app tests
 	cd frontend && npm run lint

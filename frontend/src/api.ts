@@ -53,7 +53,7 @@ export const api = {
     let buffer = ''
     let finalResult: Record<string, unknown> = {}
 
-    while (true) {
+    for (;;) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })

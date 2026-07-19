@@ -198,7 +198,7 @@ export default function Analyze() {
                   </div>
                   <div>
                     <span className="step-label">时间窗口</span>
-                    <span className="step-val">{String(pred?.time_window ?? '-')}</span>
+                    <span className="step-val">{String(pred?.time_horizon ?? pred?.time_window ?? '-')}</span>
                   </div>
                   <div>
                     <span className="step-label">响应时间</span>

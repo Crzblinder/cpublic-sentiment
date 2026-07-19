@@ -58,6 +58,12 @@ chroma_data/
 vector_db/
 mysql_data/
 
+# Embedding model cache (large files, auto-downloaded on first run)
+backend/models_cache/
+
+# Accidental npm artifacts in backend
+backend/package-lock.json
+
 # Logs
 logs/
 *.log

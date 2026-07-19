@@ -23,7 +23,17 @@ class EmbeddingModel:
             cache_dir = os.path.join(os.getcwd(), "models_cache")
             os.makedirs(cache_dir, exist_ok=True)
             logger.info(f"Loading embedding model {self.model_name}...")
-            self._model = SentenceTransformer(self.model_name, cache_folder=cache_dir)
+            # Use a HuggingFace mirror for users in mainland China when the env var is set.
+            # If the model is already cached locally, prefer offline loading to avoid
+            # unnecessary network requests and SSL errors in restricted networks.
+            local_only = _is_model_cached(cache_dir, self.model_name)
+            if local_only:
+                logger.info("Model found in local cache; loading with local_files_only=True")
+            self._model = SentenceTransformer(
+                self.model_name,
+                cache_folder=cache_dir,
+                local_files_only=local_only,
+            )
         return self._model
 
     def encode(self, texts: str | list[str]) -> np.ndarray:
@@ -33,7 +43,20 @@ class EmbeddingModel:
 
     @property
     def dimension(self) -> int:
-        return self.model.get_sentence_embedding_dimension()
+        return self.model.get_embedding_dimension()
+
+
+def _is_model_cached(cache_dir: str, model_name: str) -> bool:
+    """Heuristic: check whether the model snapshot already exists locally."""
+    normalized = model_name.replace("/", "--")
+    model_path = os.path.join(cache_dir, f"models--{normalized}")
+    if not os.path.isdir(model_path):
+        return False
+    # Look for any snapshot directory containing the model weights
+    for root, _dirs, files in os.walk(model_path):
+        if any(f.endswith((".safetensors", ".bin", ".pt")) for f in files):
+            return True
+    return False
 
 
 @lru_cache

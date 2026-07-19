@@ -57,18 +57,22 @@ async def analyze_stream(
 
     async def event_generator():
         start_time = time.time()
+        running_state: dict[str, Any] = dict(initial_state)
+
         async for event in graph.astream(initial_state, stream_mode="updates"):
             elapsed = int((time.time() - start_time) * 1000)
+            for update in event.values():
+                if isinstance(update, dict):
+                    running_state.update(update)
             payload = json.dumps(
                 {"node_update": event, "elapsed_ms": elapsed},
                 ensure_ascii=False,
             )
             yield f"data: {payload}\n\n"
 
-        # 同步执行一次获取最终状态用于持久化
-        final_state = graph.invoke(initial_state)
+        # 直接从累加状态生成最终结果并持久化，避免二次 invoke
         elapsed = int((time.time() - start_time) * 1000)
-        result = _format_result(final_state, elapsed, req.prompt_variants)
+        result = _format_result(running_state, elapsed, req.prompt_variants)
         event_id = persist_event(db, req.text, result, source=req.source)
         result["event_id"] = event_id
         final_payload = json.dumps(
