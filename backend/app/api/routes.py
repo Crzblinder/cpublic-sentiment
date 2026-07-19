@@ -1,18 +1,24 @@
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.schemas import AbTestRequest, EventResponse, LabelRequest, SentimentAnalyzeRequest
+from app.crawler.scraper import NewsScraper, get_status as crawler_get_status
 from app.models.base import get_db
 from app.models.case import RiskCase
 from app.models.enterprise import Enterprise
 from app.models.sentiment import SentimentEvent
+from app.services.dashboard_service import DashboardService
 from app.services.evaluation_service import EvaluationService
 from app.services.sentiment_service import SentimentService
 
 api_router = APIRouter()
 
+
+# ---- 舆情分析 ----
 
 @api_router.post("/sentiment/analyze")
 def analyze_sentiment(
@@ -28,14 +34,55 @@ def analyze_sentiment(
     )
 
 
+@api_router.post("/sentiment/analyze/stream")
+async def analyze_stream(
+    req: SentimentAnalyzeRequest,
+    db: Session = Depends(get_db),
+):
+    """SSE 流式舆情分析：每个 Agent 节点完成时推送中间结果。"""
+    from app.agents.workflow import build_sentiment_graph, persist_event, _format_result
+    import time
+
+    graph = build_sentiment_graph(db, prompt_variants=req.prompt_variants)
+
+    initial_state = {
+        "text": req.text,
+        "enterprise_hint": req.enterprise_hint,
+        "prompt_variants": req.prompt_variants,
+        "reasoning_chain": [],
+        "stream_events": [],
+    }
+
+    async def event_generator():
+        start_time = time.time()
+        async for event in graph.astream(initial_state, stream_mode="updates"):
+            elapsed = int((time.time() - start_time) * 1000)
+            yield f"data: {json.dumps({'node_update': event, 'elapsed_ms': elapsed}, ensure_ascii=False)}\n\n"
+
+        # 同步执行一次获取最终状态用于持久化
+        final_state = graph.invoke(initial_state)
+        elapsed = int((time.time() - start_time) * 1000)
+        result = _format_result(final_state, elapsed, req.prompt_variants)
+        event_id = persist_event(db, req.text, result, source=req.source)
+        result["event_id"] = event_id
+        yield f"data: {json.dumps({'final_result': result}, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @api_router.get("/sentiment/events", response_model=list[EventResponse])
 def list_events(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    risk_level: str | None = None,
     db: Session = Depends(get_db),
 ):
     service = SentimentService(db)
-    events = service.list_events(skip=skip, limit=limit)
+    q = db.query(SentimentEvent).filter(SentimentEvent.status == "processed")
+    if risk_level:
+        q = q.filter(SentimentEvent.risk_level == risk_level)
+    events = q.order_by(SentimentEvent.created_at.desc()).offset(skip).limit(limit).all()
     return [
         {
             "id": e.id,
@@ -83,12 +130,29 @@ def label_event(req: LabelRequest, db: Session = Depends(get_db)):
     return {"event_id": event.id, "is_correct": event.is_correct}
 
 
+# ---- 仪表盘统计 ----
+
+@api_router.get("/dashboard/stats")
+def dashboard_stats(db: Session = Depends(get_db)):
+    service = DashboardService(db)
+    return service.get_stats()
+
+
+@api_router.get("/dashboard/trend")
+def dashboard_trend(days: int = Query(30, ge=1, le=90), db: Session = Depends(get_db)):
+    service = DashboardService(db)
+    return service.get_trend(days=days)
+
+
+# ---- 案例库 ----
+
 @api_router.get("/cases")
 def list_cases(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     industry: str | None = None,
     risk_type: str | None = None,
+    search: str | None = None,
     db: Session = Depends(get_db),
 ):
     q = db.query(RiskCase)
@@ -96,19 +160,28 @@ def list_cases(
         q = q.filter(RiskCase.industry == industry)
     if risk_type:
         q = q.filter(RiskCase.risk_type == risk_type)
+    if search:
+        q = q.filter(RiskCase.title.contains(search))
+    total = q.count()
     cases = q.order_by(RiskCase.id.desc()).offset(skip).limit(limit).all()
-    return [
-        {
-            "id": c.id,
-            "title": c.title,
-            "industry": c.industry,
-            "risk_type": c.risk_type,
-            "risk_level": c.risk_level,
-            "summary": c.summary[:200],
-        }
-        for c in cases
-    ]
+    return {
+        "total": total,
+        "items": [
+            {
+                "id": c.id,
+                "title": c.title,
+                "industry": c.industry,
+                "risk_type": c.risk_type,
+                "risk_level": c.risk_level,
+                "summary": c.summary[:200],
+                "governance_playbook": c.governance_playbook,
+            }
+            for c in cases
+        ],
+    }
 
+
+# ---- 企业画像 ----
 
 @api_router.get("/enterprises")
 def list_enterprises(
@@ -120,18 +193,76 @@ def list_enterprises(
     q = db.query(Enterprise)
     if industry:
         q = q.filter(Enterprise.industry == industry)
+    total = q.count()
     enterprises = q.offset(skip).limit(limit).all()
-    return [
-        {
-            "id": e.id,
-            "name": e.name,
-            "industry": e.industry,
-            "scale": e.scale,
-            "region": e.region,
-        }
-        for e in enterprises
-    ]
+    return {
+        "total": total,
+        "items": [
+            {
+                "id": e.id,
+                "name": e.name,
+                "industry": e.industry,
+                "scale": e.scale,
+                "region": e.region,
+                "business_tags": e.business_tags or [],
+                "risk_profile": e.risk_profile or {},
+                "risk_score_history": e.risk_score_history or [],
+            }
+            for e in enterprises
+        ],
+    }
 
+
+@api_router.get("/enterprises/{enterprise_id}")
+def get_enterprise_detail(enterprise_id: int, db: Session = Depends(get_db)):
+    service = DashboardService(db)
+    detail = service.get_enterprise_detail(enterprise_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Enterprise not found")
+    return detail
+
+
+@api_router.get("/enterprises/{enterprise_id}/events")
+def get_enterprise_events(
+    enterprise_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    service = DashboardService(db)
+    return service.get_enterprise_events(enterprise_id, skip=skip, limit=limit)
+
+
+# ---- 爬虫 ----
+
+@api_router.post("/crawler/run")
+async def run_crawler(db: Session = Depends(get_db)):
+    scraper = NewsScraper()
+    items = await scraper.fetch_all()
+    # 自动分析采集到的文本
+    analyzed = 0
+    service = SentimentService(db)
+    for item in items[:10]:  # 每次最多分析 10 条
+        try:
+            text = item.get("content", item.get("title", ""))
+            if len(text) >= 10:
+                service.analyze(text=text[:2000], source=item.get("source", "crawler"))
+                analyzed += 1
+        except Exception:
+            pass
+    return {
+        "fetched": len(items),
+        "analyzed": analyzed,
+        "status": crawler_get_status(),
+    }
+
+
+@api_router.get("/crawler/status")
+def crawler_status():
+    return crawler_get_status()
+
+
+# ---- 效果评估 ----
 
 @api_router.post("/evaluation/ab-test")
 def run_ab_test(req: AbTestRequest, db: Session = Depends(get_db)):

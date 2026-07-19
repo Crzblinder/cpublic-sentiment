@@ -6,12 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.agents.orchestrator import AgentOrchestrator
 from app.agents.prompts import PROMPT_VARIANTS, get_template
+from app.config import get_settings
 from app.models.evaluation import EvaluationRun, PromptVariant
 from app.models.sentiment import SentimentEvent
 
 logger = logging.getLogger(__name__)
 
 LEVEL_TO_INT = {"低": 1, "中": 2, "高": 3, "极高": 4}
+_settings = get_settings()
 
 
 def _level_to_int(level: str | None) -> int:
@@ -75,8 +77,12 @@ class EvaluationService:
                 pv = {variant.agent_type: variant.name}
                 try:
                     start = time.time()
-                    orchestrator = AgentOrchestrator(self.db, prompt_variants=pv)
-                    out = orchestrator.process(text)
+                    if _settings.use_langgraph:
+                        from app.agents.workflow import run_analysis
+                        out = run_analysis(self.db, text, prompt_variants=pv)
+                    else:
+                        orchestrator = AgentOrchestrator(self.db, prompt_variants=pv)
+                        out = orchestrator.process(text)
                     elapsed = int((time.time() - start) * 1000)
 
                     pred_level = out["prediction"].get("risk_level", "")

@@ -59,4 +59,6 @@ def test_analyze_without_data():
 def test_cases_endpoint_empty():
     response = client.get("/api/v1/cases")
     assert response.status_code == 200
-    assert response.json() == []
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []

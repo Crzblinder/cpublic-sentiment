@@ -43,7 +43,7 @@ CPublic Sentiment 面向企业风控场景，构建 **Multi-Agent 协同架构**
 
 ```bash
 # 1. 复制环境变量并填入 API Key
-cp .env.example .env
+cp .env .env
 # 编辑 .env，填入 OPENAI_API_KEY（留空则自动使用确定性降级，仍可运行）
 
 # 2. 一键启动
@@ -64,7 +64,7 @@ docker exec sentiment_backend python scripts/seed_data.py
 
 ```bash
 # 1. 复制环境变量并开启本地模式
-cp .env.example .env
+cp .env .env
 # 编辑 .env，取消注释 USE_LOCAL_LLM=true
 
 # 2. 一键启动（含 Ollama 服务 + 自动拉取中文模型 qwen2.5:7b）

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b"
 
+    # 智能体编排：true 使用 LangGraph 图引擎，false 使用旧版 Orchestrator
+    use_langgraph: bool = True
+
     # Database
     database_url: str = "sqlite:///./sentiment.db"
     database_url_sqlite: str = "sqlite:///./sentiment.db"

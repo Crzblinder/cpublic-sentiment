@@ -1,4 +1,5 @@
 import random
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from faker import Faker
@@ -127,6 +128,12 @@ def generate_enterprises(n: int = 220) -> list[dict[str, Any]]:
             "media_exposure": random.choice(["高", "中", "低"]),
             "social_sensitivity": random.choice(["高", "中", "低"]),
         }
+        # 风险评分趋势（近 6 个月，每月一个分数 0-1）
+        base_score = random.uniform(0.2, 0.7)
+        risk_score_history = [
+            {"month": i, "score": round(min(1.0, max(0.0, base_score + random.uniform(-0.15, 0.15))), 2)}
+            for i in range(6)
+        ]
         enterprises.append(
             {
                 "name": name,
@@ -135,6 +142,7 @@ def generate_enterprises(n: int = 220) -> list[dict[str, Any]]:
                 "region": region,
                 "business_tags": tags,
                 "risk_profile": risk_profile,
+                "risk_score_history": risk_score_history,
             }
         )
     return enterprises
@@ -290,3 +298,187 @@ def generate_cases(n: int = 520) -> list[dict[str, Any]]:
             }
         )
     return cases
+
+
+# ---- 舆情事件文本模板（贴近真实） ----
+EVENT_TEMPLATES = {
+    "产品质量": [
+        "某{industry}企业旗下产品被曝存在{issue}，多名消费者在社交平台晒出问题产品图片，话题阅读量突破千万。",
+        "市场监管总局通报某{industry}公司产品{issue}问题，责令召回相关批次产品。",
+        "消费者投诉某{industry}品牌产品{issue}，客服回应引发二次舆情。",
+    ],
+    "食品安全": [
+        "某知名{industry}连锁品牌被曝门店使用{issue}，视频在抖音微博广泛传播。",
+        "消费者在{industry}企业产品中发现{issue}，相关话题登上热搜榜。",
+        "监管部门抽检发现某{industry}企业产品{issue}，已责令停产整顿。",
+    ],
+    "数据泄露": [
+        "安全研究人员发现某{industry}平台存在{issue}，数百万用户数据可能已遭泄露。",
+        "某{industry}公司App被曝{issue}，用户隐私信息在暗网上被售卖。",
+        "某{industry}企业确认发生{issue}事件，已通知受影响用户修改密码。",
+    ],
+    "劳资纠纷": [
+        "某{industry}大厂员工爆料{issue}，相关话题在微博引发热议，媒体跟进报道。",
+        "某{industry}企业被曝{issue}，数百名前员工发起劳动仲裁。",
+        "社交平台流传某{industry}公司{issue}的内部聊天记录，舆论关注度上升。",
+    ],
+    "高管丑闻": [
+        "某{industry}上市公司{executive}因涉嫌{issue}被有关部门带走调查，股价跌停。",
+        "某{industry}企业创始人被曝{issue}，公司紧急发布声明回应。",
+        "某{industry}集团{executive}卷入{issue}與情，董事会召开紧急会议。",
+    ],
+    "环保处罚": [
+        "某{industry}工厂因{issue}被环保部门罚款 200 万元，周边居民拍手称快。",
+        "环保督察组发现某{industry}企业{issue}，责令限期整改。",
+        "当地居民长期投诉某{industry}公司{issue}，媒体曝光后引发关注。",
+    ],
+    "虚假宣传": [
+        "某{industry}品牌因{issue}被市场监管部门处罚，消费者要求退赔。",
+        "某{industry}企业直播间{issue}被曝光，主播承诺与实际严重不符。",
+        "消费者集体投诉某{industry}公司{issue}，黑猫投诉平台相关案件激增。",
+    ],
+    "服务中断": [
+        "某{industry}平台突发{issue}，数百万用户无法正常登录，持续超过 4 小时。",
+        "某{industry}企业支付系统出现{issue}，影响用户交易，官方紧急发布致歉声明。",
+        "因{issue}，某{industry}公司核心服务全面中断，技术团队紧急抢修。",
+    ],
+    "金融违规": [
+        "银保监会通报某{industry}机构{issue}，罚款金额高达 5000 万元。",
+        "某{industry}企业被曝{issue}，投资者集体维权，监管已介入调查。",
+        "某{industry}平台{issue}引发兑付危机，大量用户资金被冻结。",
+    ],
+}
+
+
+def generate_sentiment_events(
+    n: int = 80,
+    enterprises: list[dict[str, Any]] | None = None,
+    cases: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """生成预填充的舆情事件，关联到已有企业和案例。
+
+    时间跨度：过去 30 天随机分布。
+    风险等级分布：低 20%、中 35%、高 30%、极高 15%。
+    """
+    issue_pool = {
+        "产品质量": ["电池过热", "刹车失灵", "屏幕碎裂", "材质不合格"],
+        "食品安全": ["过期原料", "异物", "添加剂超标", "霉变"],
+        "数据泄露": ["数据库未加密", "API漏洞", "内部人员泄露"],
+        "劳资纠纷": ["拖欠工资", "强制加班", "暴力裁员"],
+        "高管丑闻": ["内幕交易", "职务侵占", "行贿受贿"],
+        "环保处罚": ["超标排放", "非法倾倒", "环评造假"],
+        "虚假宣传": ["夸大功效", "刷单炒信", "虚假折扣"],
+        "服务中断": ["服务器宕机", "数据库故障", "网络攻击"],
+        "金融违规": ["违规放贷", "资金池运作", "信息披露不实"],
+    }
+
+    level_weights = [("低", 0.20), ("中", 0.35), ("高", 0.30), ("极高", 0.15)]
+    risk_levels_pool = []
+    for level, weight in level_weights:
+        risk_levels_pool.extend([level] * int(weight * 100))
+
+    now = datetime.now(timezone.utc)
+    events = []
+    ent_count = len(enterprises) if enterprises else 0
+    case_count = len(cases) if cases else 0
+
+    for i in range(n):
+        risk_type = random.choice(list(RISK_TYPES.keys()))
+        risk_level = random.choice(risk_levels_pool)
+        industry = random.choice(INDUSTRIES)
+        issue = random.choice(issue_pool.get(risk_type, ["问题"]))
+        executive = random.choice(["董事长", "CEO", "创始人", "财务总监"])
+
+        template = random.choice(EVENT_TEMPLATES.get(risk_type, EVENT_TEMPLATES["产品质量"]))
+        content = template.format(
+            industry=industry, issue=issue, executive=executive
+        )
+
+        # 时间：过去 30 天随机
+        days_ago = random.randint(0, 30)
+        hours_offset = random.randint(0, 23)
+        created_at = now - timedelta(days=days_ago, hours=hours_offset)
+
+        # 风险评分
+        score_map = {"低": (0.1, 0.3), "中": (0.3, 0.6), "高": (0.6, 0.85), "极高": (0.85, 0.98)}
+        low, high = score_map[risk_level]
+        risk_score = round(random.uniform(low, high), 2)
+
+        # 关联企业和案例
+        enterprise_id = None
+        enterprise_name = None
+        if ent_count > 0 and random.random() < 0.7:
+            ent = random.choice(enterprises)
+            enterprise_name = ent["name"]
+            # 找到匹配的 ID（+1 因为数据库 ID 从 1 开始）
+            enterprise_id = enterprises.index(ent) + 1
+
+        matched_case_ids = []
+        if case_count > 0 and random.random() < 0.6:
+            num_matches = random.randint(1, 3)
+            matched_indices = random.sample(range(case_count), min(num_matches, case_count))
+            matched_case_ids = [idx + 1 for idx in matched_indices]
+
+        # 推理链（模拟 Agent 输出）
+        reasoning_chain = [
+            {"step": "scan", "agent": "scanner", "output": {
+                "relevant": True, "industry": industry,
+                "risk_type": risk_type, "sentiment": "负面" if risk_level in ("高", "极高") else "中性",
+                "confidence": round(random.uniform(0.7, 0.95), 2),
+                "entities": [enterprise_name] if enterprise_name else [],
+            }},
+            {"step": "match", "agent": "matcher", "output": {
+                "matched_case_ids": matched_case_ids,
+                "synthesis": f"与 {len(matched_case_ids)} 个历史案例高度匹配",
+            }},
+            {"step": "predict", "agent": "predictor", "output": {
+                "risk_level": risk_level, "risk_score": risk_score,
+                "risk_type": risk_type,
+                "time_horizon": "7-14天" if risk_level in ("高", "极高") else "14-30天",
+                "key_indicators": ["社交媒体传播", "监管介入", "消费者投诉"][:random.randint(1, 3)],
+            }},
+            {"step": "govern", "agent": "governance", "output": {
+                "immediate_actions": ["内部核实", "准备回应口径", "监测舆情传播"],
+                "short_term_actions": ["发布说明公告", "优化相关产品/服务"],
+                "long_term_actions": ["建立预警机制"],
+                "spokesperson_message": "公司高度重视，正在积极核实并妥善处理。",
+                "monitoring_plan": ["7x24 小时舆情监测", "日报/周报输出"],
+                "estimated_cost": random.choice(["1-5 万元", "10-50 万元", "100-500 万元"]),
+            }},
+        ]
+
+        governance_plan = reasoning_chain[3]["output"]
+
+        # 部分事件带标注（约 40%）
+        labeled_level = None
+        is_correct = None
+        if random.random() < 0.4:
+            labeled_level = risk_level if random.random() < 0.75 else random.choice(["低", "中", "高", "极高"])
+            is_correct = 1 if labeled_level == risk_level else 0
+
+        # 响应时间
+        response_time_ms = random.randint(120, 3500)
+
+        events.append({
+            "title": content[:120],
+            "content": content,
+            "source": random.choice(["weibo", "news", "blackcat", "manual", "rss"]),
+            "url": fake.uri(),
+            "enterprise_id": enterprise_id,
+            "enterprise_name": enterprise_name,
+            "risk_level": risk_level,
+            "risk_type": risk_type,
+            "risk_score": risk_score,
+            "matched_case_ids": matched_case_ids,
+            "governance_plan": governance_plan,
+            "reasoning_chain": reasoning_chain,
+            "labeled_risk_level": labeled_level,
+            "is_correct": is_correct,
+            "response_time_ms": response_time_ms,
+            "status": "processed",
+            "created_at": created_at,
+        })
+
+    # 按时间倒序
+    events.sort(key=lambda e: e["created_at"], reverse=True)
+    return events

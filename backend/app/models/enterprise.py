@@ -14,6 +14,7 @@ class Enterprise(Base):
     region = Column(String(128), nullable=True, index=True)
     business_tags = Column(JSON, default=list)
     risk_profile = Column(JSON, default=dict)
+    risk_score_history = Column(JSON, default=list)
     # Pre-computed vector id in Chroma for fast retrieval
     vector_id = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
