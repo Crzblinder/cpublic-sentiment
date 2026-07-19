@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -20,20 +20,52 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [trend, setTrend] = useState<TrendPoint[]>([])
   const [events, setEvents] = useState<EventItem[]>([])
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<string[]>([])
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErrors([])
+    const nextErrors: string[] = []
+    try {
+      const [statsRes, trendRes, eventsRes] = await Promise.all([
+        api.getDashboardStats().catch((e) => { nextErrors.push(`统计: ${e.message}`); return null }),
+        api.getTrend(30).catch((e) => { nextErrors.push(`趋势: ${e.message}`); return [] }),
+        api.listEvents(0, 20).catch((e) => { nextErrors.push(`事件: ${e.message}`); return [] }),
+      ])
+      if (statsRes) setStats(statsRes)
+      if (trendRes) setTrend(trendRes)
+      if (eventsRes) setEvents(eventsRes)
+      setUpdatedAt(new Date())
+      if (nextErrors.length) setErrors(nextErrors)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    api.getDashboardStats().then(setStats).catch((e) => setError(e.message))
-    api.getTrend(30).then(setTrend).catch((e) => setError(e.message))
-    api.listEvents(0, 20).then(setEvents).catch((e) => setError(e.message))
-  }, [])
+    load()
+  }, [load])
 
   const s = stats?.summary
 
   return (
     <div>
-      <h2>仪表盘</h2>
-      {error && <div className="error-banner">{error}</div>}
+      <div className="page-header">
+        <h2>仪表盘</h2>
+        <button className="btn btn-sm btn-outline" onClick={load} disabled={loading}>
+          {loading ? '加载中...' : '刷新'}
+        </button>
+      </div>
+      {errors.map((err, i) => (
+        <div key={i} className="error-banner">{err}</div>
+      ))}
+      {updatedAt && (
+        <div className="muted-text" style={{ marginBottom: 12, fontSize: 12 }}>
+          更新时间：{updatedAt.toLocaleString('zh-CN')}
+        </div>
+      )}
 
       {/* ---- 顶部指标卡片 ---- */}
       <div className="stat-grid">
@@ -160,10 +192,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="chart-row">
-        {/* TOP10 高风险企业 */}
-        <div className="card chart-card">
-          <h3>TOP 10 高风险企业</h3>
+      {/* TOP10 高风险企业：整行展示，避免右侧留白 */}
+      <div className="card chart-card">
+        <h3>TOP 10 高风险企业</h3>
           {stats?.top_enterprises?.length ? (
             <div className="rank-list">
               {stats.top_enterprises.map((ent, idx) => (
@@ -179,7 +210,6 @@ export default function Dashboard() {
           ) : (
             <div className="chart-empty">暂无数据</div>
           )}
-        </div>
       </div>
 
       {/* ---- 最近舆情列表 ---- */}

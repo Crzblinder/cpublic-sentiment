@@ -80,6 +80,18 @@ body {
   background: var(--bg);
 }
 
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
 /* ---- Common ---- */
 
 .card {
@@ -225,6 +237,50 @@ textarea {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.input-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.example-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.example-btns button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.char-count {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.char-count-warn {
+  color: var(--danger);
+}
+
+.event-id-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  font-size: 14px;
+}
+
+.event-id {
+  font-weight: 700;
+  color: var(--primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* ---- Tables ---- */

@@ -13,6 +13,21 @@ const STEP_LABELS: Record<string, string> = {
   finalize: '完成',
 }
 
+const EXAMPLE_INPUTS = [
+  {
+    label: '外卖骑手冲突',
+    text: '某外卖平台骑手因配送超时与消费者发生争执，引发网友热议。',
+  },
+  {
+    label: '食品过期',
+    text: '某食品企业被曝使用过期原料，视频在社交平台广泛传播，多名消费者表示食用后出现腹泻。',
+  },
+  {
+    label: 'App 宕机',
+    text: '某科技公司App发生大规模宕机，用户无法登录，客服电话被打爆。',
+  },
+]
+
 function levelColor(level: string) {
   const map: Record<string, string> = { '低': '#16a34a', '中': '#f59e0b', '高': '#dc2626', '极高': '#991b1b' }
   return map[level] || '#6b7280'
@@ -28,7 +43,10 @@ export default function Analyze() {
   const [activeStep, setActiveStep] = useState<string>('')
   const [completedSteps, setCompletedSteps] = useState<string[]>([])
 
+  const canAnalyze = text.length >= 5 && !loading
+
   const handleAnalyze = async () => {
+    if (!canAnalyze) return
     setLoading(true)
     setError('')
     setResult(null)
@@ -68,8 +86,32 @@ export default function Analyze() {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.ctrlKey && e.key === 'Enter' && canAnalyze) {
+                e.preventDefault()
+                handleAnalyze()
+              }
+            }}
             placeholder="输入舆情文本，例如：某外卖平台骑手因配送超时与消费者发生争执，引发网友热议。"
           />
+          <div className="input-meta">
+            <div className="example-btns">
+              <span className="muted-text">快速示例：</span>
+              {EXAMPLE_INPUTS.map((ex) => (
+                <button
+                  key={ex.label}
+                  className="btn-sm btn-outline"
+                  onClick={() => { setText(ex.text); setHint(''); setResult(null); setError('') }}
+                  disabled={loading}
+                >
+                  {ex.label}
+                </button>
+              ))}
+            </div>
+            <span className={`char-count ${text.length < 5 ? 'char-count-warn' : ''}`}>
+              {text.length} 字
+            </span>
+          </div>
         </div>
         <div style={{ marginBottom: 12 }}>
           <input
@@ -78,8 +120,8 @@ export default function Analyze() {
             placeholder="企业名称提示（可选）"
           />
         </div>
-        <button className="btn" onClick={handleAnalyze} disabled={loading || text.length < 5}>
-          {loading ? '分析中...' : '开始分析'}
+        <button className="btn" onClick={handleAnalyze} disabled={!canAnalyze}>
+          {loading ? '分析中...' : '开始分析（Ctrl + Enter）'}
         </button>
         {error && <div className="error-banner">{error}</div>}
       </div>
@@ -270,6 +312,15 @@ export default function Analyze() {
               )}
             </div>
           </div>
+
+          {/* ---- 事件持久化信息 ---- */}
+          {result.event_id > 0 && (
+            <div className="card event-id-card">
+              <span className="muted-text">事件编号</span>
+              <span className="event-id">#{result.event_id}</span>
+              <span className="muted-text">可在仪表盘查看历史记录</span>
+            </div>
+          )}
 
           {/* ---- 推理链折叠面板 ---- */}
           <div className="card chain-panel">
