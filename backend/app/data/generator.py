@@ -1,5 +1,5 @@
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from faker import Faker
@@ -131,7 +131,13 @@ def generate_enterprises(n: int = 220) -> list[dict[str, Any]]:
         # 风险评分趋势（近 6 个月，每月一个分数 0-1）
         base_score = random.uniform(0.2, 0.7)
         risk_score_history = [
-            {"month": i, "score": round(min(1.0, max(0.0, base_score + random.uniform(-0.15, 0.15))), 2)}
+            {
+                "month": i,
+                "score": round(
+                    min(1.0, max(0.0, base_score + random.uniform(-0.15, 0.15))),
+                    2,
+                ),
+            }
             for i in range(6)
         ]
         enterprises.append(
@@ -377,7 +383,7 @@ def generate_sentiment_events(
     for level, weight in level_weights:
         risk_levels_pool.extend([level] * int(weight * 100))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     events = []
     ent_count = len(enterprises) if enterprises else 0
     case_count = len(cases) if cases else 0
@@ -420,10 +426,11 @@ def generate_sentiment_events(
             matched_case_ids = [idx + 1 for idx in matched_indices]
 
         # 推理链（模拟 Agent 输出）
+        _sentiment = "负面" if risk_level in ("高", "极高") else "中性"
         reasoning_chain = [
             {"step": "scan", "agent": "scanner", "output": {
                 "relevant": True, "industry": industry,
-                "risk_type": risk_type, "sentiment": "负面" if risk_level in ("高", "极高") else "中性",
+                "risk_type": risk_type, "sentiment": _sentiment,
                 "confidence": round(random.uniform(0.7, 0.95), 2),
                 "entities": [enterprise_name] if enterprise_name else [],
             }},
@@ -453,7 +460,11 @@ def generate_sentiment_events(
         labeled_level = None
         is_correct = None
         if random.random() < 0.4:
-            labeled_level = risk_level if random.random() < 0.75 else random.choice(["低", "中", "高", "极高"])
+            labeled_level = (
+                risk_level
+                if random.random() < 0.75
+                else random.choice(["低", "中", "高", "极高"])
+            )
             is_correct = 1 if labeled_level == risk_level else 0
 
         # 响应时间

@@ -5,7 +5,7 @@
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -54,7 +54,7 @@ class NewsScraper:
                     sources_failed.append(source["name"])
                     logger.warning("源 %s 采集失败: %s", source["name"], e)
 
-        _last_run_status["last_run"] = datetime.now(timezone.utc).isoformat()
+        _last_run_status["last_run"] = datetime.now(UTC).isoformat()
         _last_run_status["total_fetched"] = len(all_items)
         _last_run_status["sources_ok"] = sources_ok
         _last_run_status["sources_failed"] = sources_failed
@@ -131,7 +131,11 @@ class NewsScraper:
         items: list[dict[str, Any]] = []
 
         # 通用提取：找所有包含新闻文本的块
-        for el in soup.select("article, .news-item, .flash-item, .article-item, [class*='news'], [class*='flash']"):
+        selectors = (
+            "article, .news-item, .flash-item, .article-item, "
+            "[class*='news'], [class*='flash']"
+        )
+        for el in soup.select(selectors):
             title_el = el.find(["h1", "h2", "h3", "h4", "a"])
             if not title_el:
                 continue

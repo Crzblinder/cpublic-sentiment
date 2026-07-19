@@ -14,15 +14,14 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.orm import Session
 
 from app.agents.graph_nodes import build_nodes
 from app.agents.graph_state import SentimentState
-from app.models.case import RiskCase
-from app.models.enterprise import Enterprise
 from app.models.sentiment import SentimentEvent
 
 logger = logging.getLogger(__name__)
@@ -179,7 +178,12 @@ def _format_result(
         "text": state.get("text", ""),
         "scan": state.get("scan_result") or {},
         "matched_cases": [
-            {"id": c["id"], "title": c["title"], "risk_level": c["risk_level"], "risk_type": c["risk_type"]}
+            {
+                "id": c["id"],
+                "title": c["title"],
+                "risk_level": c["risk_level"],
+                "risk_type": c["risk_type"],
+            }
             for c in matched_cases
         ],
         "enterprise": (

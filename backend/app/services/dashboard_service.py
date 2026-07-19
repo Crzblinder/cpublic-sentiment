@@ -7,7 +7,7 @@
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func
@@ -92,7 +92,10 @@ class DashboardService:
         # 平均响应时间
         avg_resp = (
             self.db.query(func.avg(SentimentEvent.response_time_ms))
-            .filter(SentimentEvent.status == "processed", SentimentEvent.response_time_ms.isnot(None))
+            .filter(
+                SentimentEvent.status == "processed",
+                SentimentEvent.response_time_ms.isnot(None),
+            )
             .scalar()
         )
 
@@ -120,7 +123,7 @@ class DashboardService:
 
     def get_trend(self, days: int = 30) -> list[dict[str, Any]]:
         """近 N 天每日事件数量 + 平均风险评分。"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         start = now - timedelta(days=days)
 
         rows = (
@@ -156,7 +159,10 @@ class DashboardService:
         # 关联事件（最近 20 条）
         events = (
             self.db.query(SentimentEvent)
-            .filter(SentimentEvent.enterprise_id == enterprise_id, SentimentEvent.status == "processed")
+            .filter(
+                SentimentEvent.enterprise_id == enterprise_id,
+                SentimentEvent.status == "processed",
+            )
             .order_by(SentimentEvent.created_at.desc())
             .limit(20)
             .all()
@@ -216,7 +222,10 @@ class DashboardService:
         """企业关联的舆情事件分页列表。"""
         events = (
             self.db.query(SentimentEvent)
-            .filter(SentimentEvent.enterprise_id == enterprise_id, SentimentEvent.status == "processed")
+            .filter(
+                SentimentEvent.enterprise_id == enterprise_id,
+                SentimentEvent.status == "processed",
+            )
             .order_by(SentimentEvent.created_at.desc())
             .offset(skip)
             .limit(limit)

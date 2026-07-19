@@ -20,7 +20,7 @@ class SentimentService:
         prompt_variants: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         if settings.use_langgraph:
-            from app.agents.workflow import run_analysis, persist_event
+            from app.agents.workflow import persist_event, run_analysis
 
             result = run_analysis(
                 self.db,

@@ -6,7 +6,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.schemas import AbTestRequest, EventResponse, LabelRequest, SentimentAnalyzeRequest
-from app.crawler.scraper import NewsScraper, get_status as crawler_get_status
+from app.crawler.scraper import NewsScraper
+from app.crawler.scraper import get_status as crawler_get_status
 from app.models.base import get_db
 from app.models.case import RiskCase
 from app.models.enterprise import Enterprise
@@ -40,8 +41,9 @@ async def analyze_stream(
     db: Session = Depends(get_db),
 ):
     """SSE 流式舆情分析：每个 Agent 节点完成时推送中间结果。"""
-    from app.agents.workflow import build_sentiment_graph, persist_event, _format_result
     import time
+
+    from app.agents.workflow import _format_result, build_sentiment_graph, persist_event
 
     graph = build_sentiment_graph(db, prompt_variants=req.prompt_variants)
 
@@ -57,7 +59,11 @@ async def analyze_stream(
         start_time = time.time()
         async for event in graph.astream(initial_state, stream_mode="updates"):
             elapsed = int((time.time() - start_time) * 1000)
-            yield f"data: {json.dumps({'node_update': event, 'elapsed_ms': elapsed}, ensure_ascii=False)}\n\n"
+            payload = json.dumps(
+                {"node_update": event, "elapsed_ms": elapsed},
+                ensure_ascii=False,
+            )
+            yield f"data: {payload}\n\n"
 
         # 同步执行一次获取最终状态用于持久化
         final_state = graph.invoke(initial_state)
@@ -65,7 +71,10 @@ async def analyze_stream(
         result = _format_result(final_state, elapsed, req.prompt_variants)
         event_id = persist_event(db, req.text, result, source=req.source)
         result["event_id"] = event_id
-        yield f"data: {json.dumps({'final_result': result}, ensure_ascii=False)}\n\n"
+        final_payload = json.dumps(
+            {"final_result": result}, ensure_ascii=False,
+        )
+        yield f"data: {final_payload}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -78,7 +87,6 @@ def list_events(
     risk_level: str | None = None,
     db: Session = Depends(get_db),
 ):
-    service = SentimentService(db)
     q = db.query(SentimentEvent).filter(SentimentEvent.status == "processed")
     if risk_level:
         q = q.filter(SentimentEvent.risk_level == risk_level)
