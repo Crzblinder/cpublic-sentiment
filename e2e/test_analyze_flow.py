@@ -31,6 +31,7 @@ FRONTEND_PORT = 5173
 
 os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright-browsers"))
 os.environ.setdefault("OPENAI_API_KEY", "")
+os.environ.setdefault("USE_LANGGRAPH", "false")
 
 
 def find_chrome_executable() -> Path | None:
@@ -139,13 +140,13 @@ def test_core_pages() -> None:
                 assert rows > 0, "Expected cases to be listed"
                 print(f"Cases page loaded with {rows} rows.")
 
-                # Enterprises page
+                # Enterprises page (card grid layout, not table)
                 page.click("text=企业画像")
                 page.wait_for_selector("text=企业画像")
-                page.wait_for_selector("table tbody tr")
-                rows = page.locator("table tbody tr").count()
-                assert rows > 0, "Expected enterprises to be listed"
-                print(f"Enterprises page loaded with {rows} rows.")
+                page.wait_for_selector(".ent-card")
+                cards = page.locator(".ent-card").count()
+                assert cards > 0, "Expected enterprise cards to be listed"
+                print(f"Enterprises page loaded with {cards} cards.")
 
                 # Evaluation page (metrics only, no A/B run to avoid embeddings)
                 page.click("text=效果评估")
