@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.schemas import AbTestRequest, EventResponse, LabelRequest, SentimentAnalyzeRequest
+from app.config import get_settings
 from app.crawler.scraper import NewsScraper
 from app.crawler.scraper import get_status as crawler_get_status
 from app.models.base import get_db
@@ -295,3 +296,32 @@ def run_ab_test(req: AbTestRequest, db: Session = Depends(get_db)):
 def get_metrics(db: Session = Depends(get_db)):
     service = EvaluationService(db)
     return service.compute_overall_metrics()
+
+
+@api_router.get("/llm/status")
+def get_llm_status() -> dict[str, Any]:
+    """Return non-sensitive LLM configuration status for the frontend."""
+    settings = get_settings()
+    if settings.use_local_llm:
+        return {
+            "enabled": True,
+            "mode": "ollama",
+            "model": settings.ollama_model,
+            "base_url": settings.ollama_base_url,
+            "is_fallback": False,
+        }
+    if settings.openai_api_key and len(settings.openai_api_key) > 7:
+        return {
+            "enabled": True,
+            "mode": "openai",
+            "model": settings.openai_model,
+            "base_url": settings.openai_base_url,
+            "is_fallback": False,
+        }
+    return {
+        "enabled": False,
+        "mode": "fallback",
+        "model": "规则引擎",
+        "base_url": "",
+        "is_fallback": True,
+    }

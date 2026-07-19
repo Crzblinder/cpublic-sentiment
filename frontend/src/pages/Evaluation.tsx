@@ -4,7 +4,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
 } from 'recharts'
 import { api } from '../api'
-import type { Metrics } from '../types'
+import type { LlmStatus, Metrics } from '../types'
 
 interface DatasetItem {
   text: string
@@ -111,6 +111,7 @@ function agentLabel(agentType: string) {
 
 export default function Evaluation() {
   const [metrics, setMetrics] = useState<Metrics | null>(null)
+  const [llmStatus, setLlmStatus] = useState<LlmStatus | null>(null)
   const [abResult, setAbResult] = useState<AbResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -125,6 +126,7 @@ export default function Evaluation() {
 
   useEffect(() => {
     api.getMetrics().then(setMetrics).catch((e) => setError(e.message))
+    api.getLlmStatus().then(setLlmStatus).catch(() => { /* ignore */ })
   }, [])
 
   const runTest = async () => {
@@ -241,6 +243,24 @@ export default function Evaluation() {
     <div>
       <h2>效果评估</h2>
       {error && <div className="error-banner">{error}</div>}
+
+      {/* ---- LLM 运行状态提示 ---- */}
+      {llmStatus?.is_fallback && (
+        <div className="info-banner">
+          <strong>当前为规则引擎降级模式</strong>
+          <p>
+            未配置 OpenAI API Key 或 Ollama，所有 Agent 走内置关键词规则，Prompt 变体不会被真正执行。
+            因此 A/B 测试结果仅用于验证评估框架，不同变体的数据会高度一致。
+            如需看到 Prompt 技法的真实差异，请配置 LLM 后重新评测。
+          </p>
+        </div>
+      )}
+      {llmStatus && !llmStatus.is_fallback && (
+        <div className="info-banner info-success">
+          <strong>LLM 已启用</strong>
+          <span> 当前模式：{llmStatus.mode === 'openai' ? 'OpenAI 兼容 API' : '本地 Ollama'}，模型：{llmStatus.model}</span>
+        </div>
+      )}
 
       {/* ---- 效能指标卡片 ---- */}
       <div className="stat-grid">

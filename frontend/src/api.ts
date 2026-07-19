@@ -5,6 +5,7 @@ import type {
   EnterpriseDetail,
   EnterpriseItem,
   EventItem,
+  LlmStatus,
   Metrics,
   PaginatedResponse,
   TrendPoint,
@@ -142,6 +143,9 @@ export const api = {
     request('/crawler/run', { method: 'POST' }),
 
   getCrawlerStatus: (): Promise<CrawlerStatus> => request('/crawler/status'),
+
+  /* ---- LLM 状态 ---- */
+  getLlmStatus: (): Promise<LlmStatus> => request('/llm/status'),
 
   /* ---- 效果评估 ---- */
   getMetrics: (): Promise<Metrics> => request('/evaluation/metrics'),

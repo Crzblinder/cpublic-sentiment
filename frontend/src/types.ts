@@ -129,3 +129,11 @@ export interface CrawlerStatus {
   sources_ok: string[]
   sources_failed: string[]
 }
+
+export interface LlmStatus {
+  enabled: boolean
+  mode: 'openai' | 'ollama' | 'fallback'
+  model: string
+  base_url: string
+  is_fallback: boolean
+}
