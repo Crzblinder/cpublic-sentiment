@@ -19,24 +19,26 @@ def _lazy_template(agent_type: str, variant_file: str) -> str:
 
 # Registry of prompt variants for A/B testing
 PROMPT_VARIANTS = [
-    {"name": "scanner-zero-shot", "agent_type": "scanner", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
-    {"name": "scanner-cot", "agent_type": "scanner", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
-    {"name": "scanner-few-shot", "agent_type": "scanner", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
-    {"name": "matcher-zero-shot", "agent_type": "matcher", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
-    {"name": "matcher-cot", "agent_type": "matcher", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
-    {"name": "matcher-few-shot", "agent_type": "matcher", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
-    {"name": "predictor-zero-shot", "agent_type": "predictor", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
-    {"name": "predictor-cot", "agent_type": "predictor", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
-    {"name": "predictor-few-shot", "agent_type": "predictor", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
-    {"name": "governance-zero-shot", "agent_type": "governance", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
-    {"name": "governance-cot", "agent_type": "governance", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
-    {"name": "governance-few-shot", "agent_type": "governance", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
-    {"name": "governance-roleplay", "agent_type": "governance", "technique": "RolePlay", "is_baseline": 0, "variant_file": "roleplay"},
+    {"name": "jd_parser-zero-shot", "agent_type": "jd_parser", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
+    {"name": "jd_parser-cot", "agent_type": "jd_parser", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
+    {"name": "jd_parser-few-shot", "agent_type": "jd_parser", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
+    {"name": "talent_matcher-zero-shot", "agent_type": "talent_matcher", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
+    {"name": "talent_matcher-cot", "agent_type": "talent_matcher", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
+    {"name": "talent_matcher-few-shot", "agent_type": "talent_matcher", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
+    {"name": "trend_predictor-zero-shot", "agent_type": "trend_predictor", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
+    {"name": "trend_predictor-cot", "agent_type": "trend_predictor", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
+    {"name": "trend_predictor-few-shot", "agent_type": "trend_predictor", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
+    {"name": "learning_planner-zero-shot", "agent_type": "learning_planner", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
+    {"name": "learning_planner-cot", "agent_type": "learning_planner", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
+    {"name": "learning_planner-few-shot", "agent_type": "learning_planner", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
+    {"name": "skill_advisor-zero-shot", "agent_type": "skill_advisor", "technique": "Zero-Shot", "is_baseline": 1, "variant_file": "zero_shot"},
+    {"name": "skill_advisor-cot", "agent_type": "skill_advisor", "technique": "CoT", "is_baseline": 0, "variant_file": "cot"},
+    {"name": "skill_advisor-few-shot", "agent_type": "skill_advisor", "technique": "Few-Shot", "is_baseline": 0, "variant_file": "few_shot"},
 ]
 
 
 def get_template(variant_name: str) -> str:
-    """根据变体名称（如 'scanner-zero-shot'）获取提示词模板文本。"""
+    """根据变体名称（如 'jd_parser-zero-shot'）获取提示词模板文本。"""
     for v in PROMPT_VARIANTS:
         if v["name"] == variant_name:
             return _lazy_template(v["agent_type"], v["variant_file"])

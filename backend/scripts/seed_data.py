@@ -8,11 +8,10 @@ from app.models.base import Base, SessionLocal, engine
 
 
 def main():
-    # Ensure all tables exist
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        result = seed_database(db, n_enterprises=220, n_cases=520)
+        result = seed_database(db, n_skills=80, n_companies=40, n_jobs=250)
         print(f"Seeded: {result}")
     finally:
         db.close()

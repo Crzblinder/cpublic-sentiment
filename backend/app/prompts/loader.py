@@ -30,7 +30,8 @@ class PromptLoader:
         """读取提示词文件内容，返回完整文本。
 
         Args:
-            agent_name: Agent 名称，如 scanner / matcher / predictor / governance
+            agent_name: Agent 名称，如 jd_parser / talent_matcher / trend_predictor /
+                        learning_planner / skill_advisor
             variant:    策略变体，如 zero_shot / cot / few_shot / roleplay
 
         Returns:

@@ -1,14 +1,19 @@
 import type {
-  CaseItem,
-  CrawlerStatus,
-  DashboardStats,
-  EnterpriseDetail,
-  EnterpriseItem,
-  EventItem,
-  LlmStatus,
-  Metrics,
-  PaginatedResponse,
-  TrendPoint,
+  ApiResponse,
+  DashboardData,
+  Job,
+  JobListResponse,
+  JobSearchResult,
+  LearningPath,
+  MatchResult,
+  MatchStreamEvent,
+  ParsedJD,
+  RelatedSkill,
+  Skill,
+  SkillListResponse,
+  TrendAnalysis,
+  UserSkillProfile,
+  UserSkillProfileListResponse,
 } from './types'
 
 const API_BASE = '/api/v1'
@@ -24,27 +29,114 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const err = await res.text()
     throw new Error(err || `HTTP ${res.status}`)
   }
-  return res.json() as Promise<T>
+  const wrapper = (await res.json()) as ApiResponse<T>
+  return wrapper.data
+}
+
+function buildQuery(params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      qs.set(key, String(value))
+    }
+  })
+  return qs.toString()
 }
 
 export const api = {
-  /* ---- 舆情分析 ---- */
-  analyze: (text: string, enterpriseHint?: string) =>
-    request('/sentiment/analyze', {
+  /* ---- Health ---- */
+  healthCheck: (): Promise<{ status: string }> => request('/jobs/health'),
+
+  /* ---- Jobs ---- */
+  listJobs: (params?: {
+    page?: number
+    size?: number
+    city?: string
+    industry?: string
+    experience_level?: string
+    q?: string
+  }): Promise<JobListResponse> => {
+    const qs = buildQuery({
+      page: params?.page ?? 1,
+      size: params?.size ?? 20,
+      city: params?.city,
+      industry: params?.industry,
+      experience_level: params?.experience_level,
+      q: params?.q,
+    })
+    return request(`/jobs?${qs}`)
+  },
+
+  getJob: (jobId: number): Promise<Job> => request(`/jobs/${jobId}`),
+
+  searchJobs: (query: string, topK = 10): Promise<JobSearchResult[]> => {
+    const qs = buildQuery({ query, top_k: topK })
+    return request(`/jobs/search?${qs}`)
+  },
+
+  parseJD: (jdText: string): Promise<ParsedJD> =>
+    request('/jobs/parse', {
       method: 'POST',
-      body: JSON.stringify({ text, enterprise_hint: enterpriseHint }),
+      body: JSON.stringify({ jd_text: jdText }),
     }),
 
-  /** SSE 流式分析：通过回调接收每个节点的中间结果 */
-  analyzeStream: async (
-    text: string,
-    enterpriseHint?: string,
-    onEvent?: (data: Record<string, unknown>) => void,
-  ): Promise<Record<string, unknown>> => {
-    const res = await fetch(`${API_BASE}/sentiment/analyze/stream`, {
+  /* ---- Skills ---- */
+  listSkills: (category?: string): Promise<SkillListResponse> => {
+    const qs = buildQuery({ category })
+    return request(`/skills${qs ? `?${qs}` : ''}`)
+  },
+
+  getSkill: (skillId: number): Promise<Skill> => request(`/skills/${skillId}`),
+
+  getRelatedSkills: (skillId: number, relationType?: string): Promise<RelatedSkill[]> => {
+    const qs = buildQuery({ relation_type: relationType })
+    return request(`/skills/${skillId}/related${qs ? `?${qs}` : ''}`)
+  },
+
+  /* ---- Profiles ---- */
+  listProfiles: (): Promise<UserSkillProfileListResponse> => request('/profiles'),
+
+  createProfile: (payload: {
+    name: string
+    skills: string[]
+    experience_level: string
+    target_job_titles: string[]
+  }): Promise<UserSkillProfile> =>
+    request('/profiles', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  /* ---- Matches ---- */
+  createMatch: (profileId: number, jobId: number): Promise<MatchResult> =>
+    request('/matches', {
+      method: 'POST',
+      body: JSON.stringify({ profile_id: profileId, job_id: jobId }),
+    }),
+
+  getMatch: (matchId: number): Promise<MatchResult> => request(`/matches/${matchId}`),
+
+  generateLearningPath: (profileId: number, jobId: number): Promise<LearningPath> =>
+    request('/matches/learning-path', {
+      method: 'POST',
+      body: JSON.stringify({ profile_id: profileId, job_id: jobId }),
+    }),
+
+  /** SSE 流式匹配分析：通过回调接收每个节点的中间结果 */
+  matchStream: async (
+    payload: {
+      jd_text?: string
+      profile_id?: number
+      profile?: Record<string, unknown>
+      job_id?: number
+      job_data?: unknown[]
+    },
+    onEvent?: (event: MatchStreamEvent) => void,
+  ): Promise<MatchResult | null> => {
+    const res = await fetch(`${API_BASE}/matches/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, enterprise_hint: enterpriseHint }),
+      body: JSON.stringify(payload),
     })
     if (!res.ok || !res.body) {
       throw new Error(`HTTP ${res.status}`)
@@ -52,7 +144,7 @@ export const api = {
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    let finalResult: Record<string, unknown> = {}
+    let finalResult: MatchResult | null = null
 
     for (;;) {
       const { done, value } = await reader.read()
@@ -64,12 +156,12 @@ export const api = {
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          const payload = line.slice(6).trim()
-          if (payload === '[DONE]') continue
+          const payloadText = line.slice(6).trim()
+          if (payloadText === '[DONE]') continue
           try {
-            const parsed = JSON.parse(payload) as Record<string, unknown>
+            const parsed = JSON.parse(payloadText) as MatchStreamEvent
             if (parsed.final_result) {
-              finalResult = parsed.final_result as Record<string, unknown>
+              finalResult = parsed.final_result
             }
             onEvent?.(parsed)
           } catch {
@@ -81,81 +173,9 @@ export const api = {
     return finalResult
   },
 
-  listEvents: (skip = 0, limit = 20, riskLevel?: string): Promise<EventItem[]> => {
-    const qs = new URLSearchParams()
-    qs.set('skip', String(skip))
-    qs.set('limit', String(limit))
-    if (riskLevel) qs.set('risk_level', riskLevel)
-    return request(`/sentiment/events?${qs.toString()}`)
-  },
+  /* ---- Trends ---- */
+  getTrends: (): Promise<TrendAnalysis> => request('/trends'),
 
-  getEvent: (id: number) => request(`/sentiment/events/${id}`),
-
-  /* ---- 仪表盘 ---- */
-  getDashboardStats: (): Promise<DashboardStats> => request('/dashboard/stats'),
-
-  getTrend: (days = 30): Promise<TrendPoint[]> => request(`/dashboard/trend?days=${days}`),
-
-  /* ---- 案例库 (分页) ---- */
-  listCases: (params?: {
-    industry?: string
-    risk_type?: string
-    risk_level?: string
-    search?: string
-    skip?: number
-    limit?: number
-  }): Promise<PaginatedResponse<CaseItem>> => {
-    const qs = new URLSearchParams()
-    if (params?.industry) qs.set('industry', params.industry)
-    if (params?.risk_type) qs.set('risk_type', params.risk_type)
-    if (params?.risk_level) qs.set('risk_level', params.risk_level)
-    if (params?.search) qs.set('search', params.search)
-    qs.set('skip', String(params?.skip ?? 0))
-    qs.set('limit', String(params?.limit ?? 20))
-    return request(`/cases?${qs.toString()}`)
-  },
-
-  /* ---- 企业画像 (分页) ---- */
-  listEnterprises: (params?: {
-    industry?: string
-    region?: string
-    search?: string
-    skip?: number
-    limit?: number
-  }): Promise<PaginatedResponse<EnterpriseItem>> => {
-    const qs = new URLSearchParams()
-    if (params?.industry) qs.set('industry', params.industry)
-    if (params?.region) qs.set('region', params.region)
-    if (params?.search) qs.set('search', params.search)
-    qs.set('skip', String(params?.skip ?? 0))
-    qs.set('limit', String(params?.limit ?? 20))
-    return request(`/enterprises?${qs.toString()}`)
-  },
-
-  getEnterpriseDetail: (id: number): Promise<EnterpriseDetail> =>
-    request(`/enterprises/${id}`),
-
-  getEnterpriseEvents: (id: number, skip = 0, limit = 20): Promise<EventItem[]> =>
-    request(`/enterprises/${id}/events?skip=${skip}&limit=${limit}`),
-
-  /* ---- 爬虫 ---- */
-  runCrawler: (): Promise<{ fetched: number; analyzed: number; status: CrawlerStatus }> =>
-    request('/crawler/run', { method: 'POST' }),
-
-  getCrawlerStatus: (): Promise<CrawlerStatus> => request('/crawler/status'),
-
-  /* ---- LLM 状态 ---- */
-  getLlmStatus: (): Promise<LlmStatus> => request('/llm/status'),
-
-  /* ---- 效果评估 ---- */
-  getMetrics: (): Promise<Metrics> => request('/evaluation/metrics'),
-
-  runAbTest: (
-    dataset: Array<{ text: string; true_risk_level: string; true_risk_type: string }>,
-    agentType?: string,
-  ) =>
-    request('/evaluation/ab-test', {
-      method: 'POST',
-      body: JSON.stringify({ dataset, agent_type: agentType }),
-    }),
+  /* ---- Dashboard ---- */
+  getDashboard: (): Promise<DashboardData> => request('/dashboard'),
 }

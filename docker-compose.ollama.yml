@@ -7,7 +7,7 @@
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: sentiment_ollama
+    container_name: talentmatch_ollama
     restart: unless-stopped
     ports:
       - "11434:11434"

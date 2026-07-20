@@ -11,7 +11,7 @@ if (-not $env:HF_ENDPOINT) {
     Write-Host "Set HF_ENDPOINT=https://hf-mirror.com (set env var to override)" -ForegroundColor DarkGray
 }
 
-Write-Host "Starting CPublic Sentiment locally..." -ForegroundColor Cyan
+Write-Host "Starting TalentMatch Engine locally..." -ForegroundColor Cyan
 Write-Host "Project root: $ProjectRoot" -ForegroundColor DarkGray
 
 # --- Resolve Python launcher ---

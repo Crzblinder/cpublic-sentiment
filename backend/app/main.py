@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import models  # noqa: F401  注册所有模型到 Base.metadata
 from app.api.routes import api_router
 from app.config import get_settings
 from app.models.base import Base, engine
@@ -25,8 +26,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CPublic Sentiment",
-    description="Enterprise public sentiment risk early warning multi-agent system",
+    title="岗位技能图谱与人才匹配引擎",
+    description="Skill map and talent matching engine",
     version="0.1.0",
     lifespan=lifespan,
 )

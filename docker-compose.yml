@@ -1,13 +1,13 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: sentiment_mysql
+    container_name: talentmatch_mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: sentiment
-      MYSQL_USER: sentiment
-      MYSQL_PASSWORD: sentiment
+      MYSQL_DATABASE: talentmatch
+      MYSQL_USER: talentmatch
+      MYSQL_PASSWORD: talentmatch
     volumes:
       - mysql_data:/var/lib/mysql
     ports:
@@ -22,12 +22,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: sentiment_backend
+    container_name: talentmatch_backend
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      - DATABASE_URL=mysql+pymysql://sentiment:sentiment@mysql:3306/sentiment?charset=utf8mb4
+      - DATABASE_URL=mysql+pymysql://talentmatch:talentmatch@mysql:3306/talentmatch?charset=utf8mb4
       - VECTOR_DB_PATH=/app/chroma_data
     volumes:
       - chroma_data:/app/chroma_data
@@ -44,7 +44,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: sentiment_frontend
+    container_name: talentmatch_frontend
     restart: unless-stopped
     env_file:
       - .env

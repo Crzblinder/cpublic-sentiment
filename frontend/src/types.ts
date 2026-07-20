@@ -1,40 +1,7 @@
-export interface EventItem {
-  id: number
-  title: string
-  risk_level: string | null
-  risk_type: string | null
-  risk_score: number
-  status: string
-  created_at: string | null
-}
-
-export interface AnalyzeResult {
-  event_id: number
-  text: string
-  scan: Record<string, unknown>
-  matched_cases: Array<{
-    id: number
-    title: string
-    risk_level: string
-    risk_type: string
-    match_score?: number
-    reason?: string
-  }>
-  enterprise: { id: number; name: string; industry: string } | null
-  prediction: Record<string, unknown>
-  governance: Record<string, unknown>
-  reasoning_chain: Array<Record<string, unknown>>
-  response_time_ms: number
-}
-
-export interface CaseItem {
-  id: number
-  title: string
-  industry: string
-  risk_type: string
-  risk_level: string
-  summary: string
-  governance_playbook?: Record<string, unknown>
+export interface ApiResponse<T> {
+  code: number
+  data: T
+  message: string
 }
 
 export interface PaginatedResponse<T> {
@@ -42,98 +9,173 @@ export interface PaginatedResponse<T> {
   items: T[]
 }
 
-export interface EnterpriseItem {
+export interface PagedResponse<T> {
+  total: number
+  page: number
+  size: number
+  items: T[]
+}
+
+/* ---- Skill ---- */
+
+export interface Skill {
+  id: number
+  name: string
+  category: string
+  aliases: string[]
+  definition: string
+}
+
+export interface SkillListResponse {
+  total: number
+  items: Skill[]
+}
+
+export interface RelatedSkill {
+  skill: string
+  relation_type: string
+  weight: number
+  target_skill: string
+}
+
+export interface SkillStatistics {
+  total_skills: number
+  total_relations: number
+  category_distribution: Array<{ category: string; count: number }>
+  hot_skills: Array<{ skill: string; count: number }>
+  relation_type_distribution: Array<{ relation_type: string; count: number }>
+}
+
+/* ---- Company ---- */
+
+export interface Company {
   id: number
   name: string
   industry: string
-  scale: string
-  region: string
-  business_tags: string[]
-  risk_profile: Record<string, unknown>
-  risk_score_history: Array<{ month: string; score: number }>
+  size: string
+  city: string
 }
 
-export interface Metrics {
+/* ---- Job ---- */
+
+export interface Job {
+  id: number
+  title: string
+  company: Company
+  city: string
+  salary_min: number
+  salary_max: number
+  experience_level: string
+  education_level: string
+  required_skills: string[]
+  description: string
+  posted_at: string | null
+}
+
+export interface JobListResponse {
   total: number
-  labeled: number
-  accuracy: number
-  recall: number
-  avg_response_time_ms: number
+  page: number
+  size: number
+  items: Job[]
 }
 
-/* ---- Dashboard stats ---- */
-
-export interface DashboardStats {
-  summary: {
-    total_events: number
-    today_events: number
-    week_high_risk_events: number
-    high_risk_ratio: number
-    avg_risk_score: number
-    avg_response_time_ms: number
-    accuracy: number
-    labeled_count: number
-  }
-  risk_distribution: Array<{ name: string; value: number }>
-  risk_type_distribution: Array<{ name: string; value: number }>
-  industry_distribution: Array<{ name: string; value: number }>
-  top_enterprises: Array<{
-    id: number
-    name: string
-    industry: string
-    avg_risk_score: number
-    event_count: number
-  }>
+export interface JobSearchResult {
+  id: string
+  document: string
+  metadata: Record<string, unknown>
+  score?: number
+  keyword_score?: number
+  hybrid_score?: number
+  source: string
 }
 
-export interface TrendPoint {
-  date: string
-  count: number
-  avg_score: number
+export interface ParsedJD {
+  title: string
+  company: string
+  required_skills: string[]
+  experience_level: string
+  education_level: string
+  implicit_needs: string[]
 }
 
-/* ---- Enterprise detail ---- */
-
-export interface EnterpriseDetail {
-  enterprise: {
-    id: number
-    name: string
-    industry: string
-    scale: string
-    region: string
-    business_tags: string[]
-    risk_profile: Record<string, unknown>
-    risk_score_history: Array<{ month: string; score: number }>
-  }
-  events: Array<{
-    id: number
-    title: string
-    risk_level: string | null
-    risk_type: string | null
-    risk_score: number
-    created_at: string | null
-  }>
-  rank_in_industry: number | null
-  industry_peers: Array<{
-    id: number
-    name: string
-    avg_risk_score: number
-  }>
+export interface JobStatistics {
+  total_jobs: number
+  total_companies: number
+  avg_salary_min: number
+  avg_salary_max: number
+  top_cities: Array<{ city: string; count: number }>
+  top_industries: Array<{ industry: string; count: number }>
+  hot_skills: Array<{ skill: string; count: number }>
+  experience_distribution: Array<{ experience_level: string; count: number }>
 }
 
-/* ---- Crawler ---- */
+/* ---- UserSkillProfile ---- */
 
-export interface CrawlerStatus {
-  last_run: string | null
-  total_fetched: number
-  sources_ok: string[]
-  sources_failed: string[]
+export interface UserSkillProfile {
+  id: number
+  name: string
+  skills: string[]
+  experience_level: string
+  target_job_titles: string[]
+  created_at: string | null
 }
 
-export interface LlmStatus {
-  enabled: boolean
-  mode: 'openai' | 'ollama' | 'fallback'
-  model: string
-  base_url: string
-  is_fallback: boolean
+export interface UserSkillProfileListResponse {
+  total: number
+  items: UserSkillProfile[]
+}
+
+/* ---- MatchResult ---- */
+
+export interface MatchResult {
+  id: number
+  user_profile_id: number
+  job_id: number
+  match_score: number
+  matched_skills: string[]
+  missing_skills: string[]
+  transferable_skills: string[]
+  analysis_summary: string | null
+  created_at: string | null
+}
+
+export interface LearningPathItem {
+  skill: string
+  difficulty: string
+  estimated_weeks: number
+  resource_type: string
+  prerequisites: string[]
+}
+
+export interface LearningPath {
+  profile_id: number
+  job_id: number
+  learning_path: LearningPathItem[]
+}
+
+/* ---- Trend ---- */
+
+export interface TrendAnalysis {
+  summary: string
+  top_skills: string[]
+  avg_salary_range: string
+  hot_job_titles: string[]
+  key_metrics: Record<string, number | string>
+}
+
+/* ---- Dashboard ---- */
+
+export interface DashboardData {
+  jobs: JobStatistics
+  skills: SkillStatistics
+  trends: TrendAnalysis
+}
+
+/* ---- Stream ---- */
+
+export interface MatchStreamEvent {
+  node?: string
+  status?: string
+  message?: string
+  final_result?: MatchResult
 }

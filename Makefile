@@ -5,7 +5,7 @@ help:
 	@echo "  install          - Install backend and frontend dependencies"
 	@echo "  backend          - Run backend development server"
 	@echo "  frontend         - Run frontend development server"
-	@echo "  seed             - Seed database with sample cases and enterprises"
+	@echo "  seed             - Seed database with sample jobs, skills and companies"
 	@echo "  test             - Run all tests"
 	@echo "  docker-up        - Start full stack with Docker Compose (cloud API mode)"
 	@echo "  docker-down      - Stop Docker Compose stack"

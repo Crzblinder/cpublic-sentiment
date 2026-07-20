@@ -4,11 +4,9 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import get_settings
-from app.llm.factory import LLMClientFactory
 from app.prompts.loader import PromptLoader
 
 logger = logging.getLogger(__name__)
@@ -29,6 +27,8 @@ class BaseAgent(ABC):
     @property
     def llm(self):
         if self._llm is None:
+            from app.llm.factory import LLMClientFactory
+
             self._llm = LLMClientFactory.create(self.settings)
         return self._llm
 
@@ -57,6 +57,8 @@ class BaseAgent(ABC):
         response_format: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """通过 LangChain 统一接口调用大模型，强制 JSON 输出，异常时降级到规则引擎。"""
+        from langchain_core.messages import HumanMessage, SystemMessage
+
         start = time.time()
 
         # ---- 无 LLM 配置时直接走确定性降级 ----

@@ -3,9 +3,6 @@ import os
 from functools import lru_cache
 from typing import Any
 
-import numpy as np
-from sentence_transformers import SentenceTransformer
-
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -18,8 +15,13 @@ class EmbeddingModel:
         self._model: Any | None = None
 
     @property
-    def model(self) -> SentenceTransformer:
+    def model(self):
         if self._model is None:
+            # Lazy import to avoid loading torch/sentence-transformers at import time.
+            # This speeds up cold starts and keeps the embedding model download
+            # isolated until the first encode() call.
+            from sentence_transformers import SentenceTransformer
+
             cache_dir = os.path.join(os.getcwd(), "models_cache")
             os.makedirs(cache_dir, exist_ok=True)
             logger.info(f"Loading embedding model {self.model_name}...")
@@ -29,14 +31,25 @@ class EmbeddingModel:
             local_only = _is_model_cached(cache_dir, self.model_name)
             if local_only:
                 logger.info("Model found in local cache; loading with local_files_only=True")
-            self._model = SentenceTransformer(
-                self.model_name,
-                cache_folder=cache_dir,
-                local_files_only=local_only,
-            )
+            try:
+                self._model = SentenceTransformer(
+                    self.model_name,
+                    cache_folder=cache_dir,
+                    local_files_only=local_only,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to load embedding model '%s'. If this is the first run, "
+                    "ensure you have network access to HuggingFace or set HF_ENDPOINT "
+                    "to a local mirror. Error: %s",
+                    self.model_name,
+                    exc,
+                )
+                raise
         return self._model
 
-    def encode(self, texts: str | list[str]) -> np.ndarray:
+    def encode(self, texts: str | list[str]):
+
         if isinstance(texts, str):
             texts = [texts]
         return self.model.encode(texts, normalize_embeddings=True, convert_to_numpy=True)

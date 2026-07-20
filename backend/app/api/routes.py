@@ -1,327 +1,442 @@
+"""新版岗位技能图谱与人才匹配 API 路由。"""
+
+from __future__ import annotations
+
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.api.schemas import AbTestRequest, EventResponse, LabelRequest, SentimentAnalyzeRequest
-from app.config import get_settings
-from app.crawler.scraper import NewsScraper
-from app.crawler.scraper import get_status as crawler_get_status
+from app.agents.graph_state import JobMatchState
+from app.agents.trend_predictor import TrendPredictor
+from app.agents.workflow import run_job_match_stream
+from app.api.schemas import (
+    ApiResponse,
+    JDParseOut,
+    JDParseRequest,
+    JobListOut,
+    JobListParams,
+    JobOut,
+    JobSearchResult,
+    LearningPathOut,
+    LearningPathRequest,
+    MatchRequest,
+    MatchResultListOut,
+    MatchResultOut,
+    MatchStreamRequest,
+    SkillListOut,
+    SkillOut,
+    UserSkillProfileCreate,
+    UserSkillProfileListOut,
+    UserSkillProfileOut,
+)
+from app.models import Job, UserSkillProfile
 from app.models.base import get_db
-from app.models.case import RiskCase
-from app.models.enterprise import Enterprise
-from app.models.sentiment import SentimentEvent
-from app.services.dashboard_service import DashboardService
-from app.services.evaluation_service import EvaluationService
-from app.services.sentiment_service import SentimentService
+from app.services.jd_service import JDService
+from app.services.job_service import JobService
+from app.services.matching_service import MatchingService
+from app.services.skill_service import SkillService
+
+logger = logging.getLogger(__name__)
 
 api_router = APIRouter()
 
 
-# ---- 舆情分析 ----
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _success(data: Any, message: str = "ok") -> ApiResponse:
+    return ApiResponse(code=0, data=data, message=message)
 
-@api_router.post("/sentiment/analyze")
-def analyze_sentiment(
-    req: SentimentAnalyzeRequest,
+
+def _job_to_dict(job: Job) -> dict[str, Any]:
+    return {
+        "id": job.id,
+        "title": job.title,
+        "company": {
+            "id": job.company.id,
+            "name": job.company.name,
+            "industry": job.company.industry,
+            "size": job.company.size,
+            "city": job.company.city,
+        },
+        "city": job.city,
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "experience_level": job.experience_level,
+        "education_level": job.education_level,
+        "required_skills": _load_json_list(job.required_skills),
+        "description": job.description,
+        "posted_at": job.posted_at,
+    }
+
+
+def _profile_to_dict(profile: UserSkillProfile) -> dict[str, Any]:
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "skills": _load_json_list(profile.skills),
+        "experience_level": profile.experience_level,
+        "target_job_titles": _load_json_list(profile.target_job_titles),
+        "created_at": profile.created_at,
+    }
+
+
+def _load_json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+@api_router.get("/jobs/health")
+def jobs_health() -> ApiResponse:
+    return _success({"status": "ok"}, message="服务健康")
+
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
+@api_router.get("/jobs", response_model=ApiResponse)
+def list_jobs(
+    params: JobListParams = Depends(),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    service = SentimentService(db)
-    return service.analyze(
-        text=req.text,
-        source=req.source,
-        enterprise_hint=req.enterprise_hint,
-        prompt_variants=req.prompt_variants,
+) -> ApiResponse:
+    service = JobService(db)
+    result = service.list_jobs(
+        page=params.page,
+        size=params.size,
+        q=params.q,
+        city=params.city,
+        industry=params.industry,
+        experience_level=params.experience_level,
+    )
+    result["items"] = [JobOut.model_validate(_job_to_dict(job)) for job in result["items"]]
+    return _success(JobListOut.model_validate(result).model_dump())
+
+
+@api_router.get("/jobs/{job_id}", response_model=ApiResponse)
+def get_job(job_id: int, db: Session = Depends(get_db)) -> ApiResponse:
+    service = JobService(db)
+    job = service.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"岗位不存在: {job_id}")
+    return _success(JobOut.model_validate(_job_to_dict(job)).model_dump())
+
+
+@api_router.get("/jobs/search", response_model=ApiResponse)
+def search_jobs(
+    query: str = Query(..., min_length=1),
+    top_k: int = Query(10, ge=1, le=50),
+    city: str | None = None,
+    industry: str | None = None,
+    experience_level: str | None = None,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    service = JobService(db)
+    results = service.search_jobs(
+        query=query,
+        top_k=top_k,
+        city=city,
+        industry=industry,
+        experience_level=experience_level,
+    )
+    return _success([JobSearchResult.model_validate(r).model_dump() for r in results])
+
+
+@api_router.post("/jobs/parse", response_model=ApiResponse)
+def parse_jd(payload: JDParseRequest, db: Session = Depends(get_db)) -> ApiResponse:
+    service = JDService()
+    try:
+        parsed = service.parse_jd_text(payload.jd_text)
+    except Exception as exc:
+        logger.exception("JD 解析失败")
+        raise HTTPException(status_code=500, detail=f"JD 解析失败: {exc}") from exc
+    return _success(JDParseOut.model_validate(parsed).model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Skills
+# ---------------------------------------------------------------------------
+@api_router.get("/skills", response_model=ApiResponse)
+def list_skills(
+    category: str | None = None,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    service = SkillService(db)
+    result = service.list_skills(category=category)
+    return _success(SkillListOut.model_validate(result).model_dump())
+
+
+@api_router.get("/skills/{skill_id}", response_model=ApiResponse)
+def get_skill(skill_id: int, db: Session = Depends(get_db)) -> ApiResponse:
+    service = SkillService(db)
+    skill = service.get_skill(skill_id)
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"技能不存在: {skill_id}")
+    return _success(SkillOut.model_validate(skill).model_dump())
+
+
+@api_router.get("/skills/{skill_id}/related", response_model=ApiResponse)
+def get_related_skills(
+    skill_id: int,
+    relation_type: str | None = None,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    service = SkillService(db)
+    skill = service.get_skill(skill_id)
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"技能不存在: {skill_id}")
+    related = service.get_related_skills(
+        skill_name=skill.name,
+        relation_type=relation_type,
+    )
+    return _success(related)
+
+
+# ---------------------------------------------------------------------------
+# Profiles
+# ---------------------------------------------------------------------------
+@api_router.post("/profiles", response_model=ApiResponse)
+def create_profile(
+    payload: UserSkillProfileCreate,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    import json as _json
+
+    profile = UserSkillProfile(
+        name=payload.name,
+        skills=_json.dumps(payload.skills, ensure_ascii=False),
+        experience_level=payload.experience_level,
+        target_job_titles=_json.dumps(payload.target_job_titles, ensure_ascii=False),
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return _success(UserSkillProfileOut.model_validate(profile).model_dump())
+
+
+@api_router.get("/profiles", response_model=ApiResponse)
+def list_profiles(db: Session = Depends(get_db)) -> ApiResponse:
+    items = db.query(UserSkillProfile).order_by(UserSkillProfile.created_at.desc()).all()
+    return _success(
+        UserSkillProfileListOut(
+            total=len(items),
+            items=[UserSkillProfileOut.model_validate(p) for p in items],
+        ).model_dump()
     )
 
 
-@api_router.post("/sentiment/analyze/stream")
-async def analyze_stream(
-    req: SentimentAnalyzeRequest,
+# ---------------------------------------------------------------------------
+# Matches
+# ---------------------------------------------------------------------------
+@api_router.post("/matches", response_model=ApiResponse)
+def create_match(
+    payload: MatchRequest,
     db: Session = Depends(get_db),
-):
-    """SSE 流式舆情分析：每个 Agent 节点完成时推送中间结果。"""
-    import time
-
-    from app.agents.workflow import _format_result, build_sentiment_graph, persist_event
-
-    graph = build_sentiment_graph(db, prompt_variants=req.prompt_variants)
-
-    initial_state = {
-        "text": req.text,
-        "enterprise_hint": req.enterprise_hint,
-        "prompt_variants": req.prompt_variants,
-        "reasoning_chain": [],
-        "stream_events": [],
-    }
-
-    async def event_generator():
-        start_time = time.time()
-        running_state: dict[str, Any] = dict(initial_state)
-
-        async for event in graph.astream(initial_state, stream_mode="updates"):
-            elapsed = int((time.time() - start_time) * 1000)
-            for update in event.values():
-                if isinstance(update, dict):
-                    running_state.update(update)
-            payload = json.dumps(
-                {"node_update": event, "elapsed_ms": elapsed},
-                ensure_ascii=False,
-            )
-            yield f"data: {payload}\n\n"
-
-        # 直接从累加状态生成最终结果并持久化，避免二次 invoke
-        elapsed = int((time.time() - start_time) * 1000)
-        result = _format_result(running_state, elapsed, req.prompt_variants)
-        event_id = persist_event(db, req.text, result, source=req.source)
-        result["event_id"] = event_id
-        final_payload = json.dumps(
-            {"final_result": result}, ensure_ascii=False,
+) -> ApiResponse:
+    service = MatchingService(db)
+    try:
+        match_result = service.match_profile_to_job(
+            profile_id=payload.profile_id,
+            job_id=payload.job_id,
         )
-        yield f"data: {final_payload}\n\n"
-        yield "data: [DONE]\n\n"
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("匹配失败")
+        raise HTTPException(status_code=500, detail=f"匹配失败: {exc}") from exc
+    return _success(MatchResultOut.model_validate(match_result).model_dump())
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@api_router.get("/matches/{match_id}", response_model=ApiResponse)
+def get_match(match_id: int, db: Session = Depends(get_db)) -> ApiResponse:
+    service = MatchingService(db)
+    match_result = service.get_match_result(match_id)
+    if match_result is None:
+        raise HTTPException(status_code=404, detail=f"匹配结果不存在: {match_id}")
+    return _success(MatchResultOut.model_validate(match_result).model_dump())
 
 
-@api_router.get("/sentiment/events", response_model=list[EventResponse])
-def list_events(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    risk_level: str | None = None,
+@api_router.get("/matches", response_model=ApiResponse)
+def list_matches(
+    profile_id: int | None = None,
     db: Session = Depends(get_db),
-):
-    q = db.query(SentimentEvent).filter(SentimentEvent.status == "processed")
-    if risk_level:
-        q = q.filter(SentimentEvent.risk_level == risk_level)
-    events = q.order_by(SentimentEvent.created_at.desc()).offset(skip).limit(limit).all()
-    return [
+) -> ApiResponse:
+    service = MatchingService(db)
+    result = service.list_match_results(profile_id=profile_id)
+    return _success(
+        MatchResultListOut(
+            total=result["total"],
+            items=[MatchResultOut.model_validate(m) for m in result["items"]],
+        ).model_dump()
+    )
+
+
+@api_router.post("/matches/learning-path", response_model=ApiResponse)
+def generate_learning_path(
+    payload: LearningPathRequest,
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    service = MatchingService(db)
+    try:
+        result = service.generate_learning_path(
+            profile_id=payload.profile_id,
+            job_id=payload.job_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("生成学习路径失败")
+        raise HTTPException(status_code=500, detail=f"生成学习路径失败: {exc}") from exc
+    return _success(LearningPathOut.model_validate(result).model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Trends
+# ---------------------------------------------------------------------------
+@api_router.get("/trends", response_model=ApiResponse)
+def get_trends(db: Session = Depends(get_db)) -> ApiResponse:
+    job_data = []
+    for job in db.query(Job).all():
+        job_data.append(
+            {
+                "title": job.title,
+                "city": job.city,
+                "salary_min": job.salary_min,
+                "salary_max": job.salary_max,
+                "required_skills": _load_json_list(job.required_skills),
+            }
+        )
+
+    agent = TrendPredictor()
+    trend = agent.predict(job_data)
+    return _success(
         {
-            "id": e.id,
-            "title": e.title,
-            "risk_level": e.risk_level,
-            "risk_type": e.risk_type,
-            "risk_score": e.risk_score,
-            "status": e.status,
-            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "summary": trend.get("summary", ""),
+            "top_skills": trend.get("top_skills", []),
+            "avg_salary_range": trend.get("avg_salary_range", ""),
+            "hot_job_titles": trend.get("hot_job_titles", []),
+            "key_metrics": trend.get("key_metrics", {}),
         }
-        for e in events
-    ]
+    )
 
 
-@api_router.get("/sentiment/events/{event_id}")
-def get_event(event_id: int, db: Session = Depends(get_db)):
-    event = db.query(SentimentEvent).filter(SentimentEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return {
-        "id": event.id,
-        "title": event.title,
-        "content": event.content,
-        "risk_level": event.risk_level,
-        "risk_type": event.risk_type,
-        "risk_score": event.risk_score,
-        "enterprise_name": event.enterprise_name,
-        "matched_case_ids": event.matched_case_ids,
-        "governance_plan": event.governance_plan,
-        "reasoning_chain": event.reasoning_chain,
-        "response_time_ms": event.response_time_ms,
-        "status": event.status,
-        "created_at": event.created_at.isoformat() if event.created_at else None,
-    }
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+@api_router.get("/dashboard", response_model=ApiResponse)
+def get_dashboard(db: Session = Depends(get_db)) -> ApiResponse:
+    job_service = JobService(db)
+    skill_service = SkillService(db)
 
+    job_stats = job_service.get_job_statistics()
+    skill_stats = skill_service.get_skill_statistics()
 
-@api_router.post("/sentiment/label")
-def label_event(req: LabelRequest, db: Session = Depends(get_db)):
-    event = db.query(SentimentEvent).filter(SentimentEvent.id == req.event_id).first()
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    event.labeled_risk_level = req.true_risk_level
-    event.is_correct = int(event.risk_level == req.true_risk_level)
-    db.commit()
-    return {"event_id": event.id, "is_correct": event.is_correct}
-
-
-# ---- 仪表盘统计 ----
-
-@api_router.get("/dashboard/stats")
-def dashboard_stats(db: Session = Depends(get_db)):
-    service = DashboardService(db)
-    return service.get_stats()
-
-
-@api_router.get("/dashboard/trend")
-def dashboard_trend(days: int = Query(30, ge=1, le=90), db: Session = Depends(get_db)):
-    service = DashboardService(db)
-    return service.get_trend(days=days)
-
-
-# ---- 案例库 ----
-
-@api_router.get("/cases")
-def list_cases(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    industry: str | None = None,
-    risk_type: str | None = None,
-    risk_level: str | None = None,
-    search: str | None = None,
-    db: Session = Depends(get_db),
-):
-    q = db.query(RiskCase)
-    if industry:
-        q = q.filter(RiskCase.industry == industry)
-    if risk_type:
-        q = q.filter(RiskCase.risk_type == risk_type)
-    if risk_level:
-        q = q.filter(RiskCase.risk_level == risk_level)
-    if search:
-        q = q.filter(RiskCase.title.contains(search))
-    total = q.count()
-    cases = q.order_by(RiskCase.id.desc()).offset(skip).limit(limit).all()
-    return {
-        "total": total,
-        "items": [
+    job_data = []
+    for job in db.query(Job).all():
+        job_data.append(
             {
-                "id": c.id,
-                "title": c.title,
-                "industry": c.industry,
-                "risk_type": c.risk_type,
-                "risk_level": c.risk_level,
-                "summary": c.summary[:200],
-                "governance_playbook": c.governance_playbook,
+                "title": job.title,
+                "city": job.city,
+                "salary_min": job.salary_min,
+                "salary_max": job.salary_max,
+                "required_skills": _load_json_list(job.required_skills),
             }
-            for c in cases
-        ],
-    }
+        )
+    agent = TrendPredictor()
+    trend = agent.predict(job_data)
 
-
-# ---- 企业画像 ----
-
-@api_router.get("/enterprises")
-def list_enterprises(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    industry: str | None = None,
-    region: str | None = None,
-    search: str | None = None,
-    db: Session = Depends(get_db),
-):
-    q = db.query(Enterprise)
-    if industry:
-        q = q.filter(Enterprise.industry == industry)
-    if region:
-        q = q.filter(Enterprise.region == region)
-    if search:
-        q = q.filter(Enterprise.name.contains(search))
-    total = q.count()
-    enterprises = q.offset(skip).limit(limit).all()
-    return {
-        "total": total,
-        "items": [
-            {
-                "id": e.id,
-                "name": e.name,
-                "industry": e.industry,
-                "scale": e.scale,
-                "region": e.region,
-                "business_tags": e.business_tags or [],
-                "risk_profile": e.risk_profile or {},
-                "risk_score_history": e.risk_score_history or [],
-            }
-            for e in enterprises
-        ],
-    }
-
-
-@api_router.get("/enterprises/{enterprise_id}")
-def get_enterprise_detail(enterprise_id: int, db: Session = Depends(get_db)):
-    service = DashboardService(db)
-    detail = service.get_enterprise_detail(enterprise_id)
-    if not detail:
-        raise HTTPException(status_code=404, detail="Enterprise not found")
-    return detail
-
-
-@api_router.get("/enterprises/{enterprise_id}/events")
-def get_enterprise_events(
-    enterprise_id: int,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    service = DashboardService(db)
-    return service.get_enterprise_events(enterprise_id, skip=skip, limit=limit)
-
-
-# ---- 爬虫 ----
-
-@api_router.post("/crawler/run")
-async def run_crawler(db: Session = Depends(get_db)):
-    scraper = NewsScraper()
-    items = await scraper.fetch_all()
-    # 自动分析采集到的文本
-    analyzed = 0
-    service = SentimentService(db)
-    for item in items[:10]:  # 每次最多分析 10 条
-        try:
-            text = item.get("content", item.get("title", ""))
-            if len(text) >= 10:
-                service.analyze(text=text[:2000], source=item.get("source", "crawler"))
-                analyzed += 1
-        except Exception:
-            pass
-    return {
-        "fetched": len(items),
-        "analyzed": analyzed,
-        "status": crawler_get_status(),
-    }
-
-
-@api_router.get("/crawler/status")
-def crawler_status():
-    return crawler_get_status()
-
-
-# ---- 效果评估 ----
-
-@api_router.post("/evaluation/ab-test")
-def run_ab_test(req: AbTestRequest, db: Session = Depends(get_db)):
-    service = EvaluationService(db)
-    return service.run_ab_test(dataset=req.dataset, agent_type=req.agent_type)
-
-
-@api_router.get("/evaluation/metrics")
-def get_metrics(db: Session = Depends(get_db)):
-    service = EvaluationService(db)
-    return service.compute_overall_metrics()
-
-
-@api_router.get("/llm/status")
-def get_llm_status() -> dict[str, Any]:
-    """Return non-sensitive LLM configuration status for the frontend."""
-    settings = get_settings()
-    if settings.use_local_llm:
-        return {
-            "enabled": True,
-            "mode": "ollama",
-            "model": settings.ollama_model,
-            "base_url": settings.ollama_base_url,
-            "is_fallback": False,
+    return _success(
+        {
+            "jobs": job_stats,
+            "skills": skill_stats,
+            "trends": {
+                "summary": trend.get("summary", ""),
+                "top_skills": trend.get("top_skills", []),
+                "avg_salary_range": trend.get("avg_salary_range", ""),
+                "hot_job_titles": trend.get("hot_job_titles", []),
+                "key_metrics": trend.get("key_metrics", {}),
+            },
         }
-    if settings.openai_api_key and len(settings.openai_api_key) > 7:
-        return {
-            "enabled": True,
-            "mode": "openai",
-            "model": settings.openai_model,
-            "base_url": settings.openai_base_url,
-            "is_fallback": False,
-        }
-    return {
-        "enabled": False,
-        "mode": "fallback",
-        "model": "规则引擎",
-        "base_url": "",
-        "is_fallback": True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SSE Stream
+# ---------------------------------------------------------------------------
+async def _match_stream_events(
+    db: Session,
+    payload: MatchStreamRequest,
+) -> Any:
+    input_text = payload.jd_text or ""
+    target_job = None
+    profile = payload.profile or {}
+
+    if payload.job_id is not None:
+        job = db.query(Job).filter(Job.id == payload.job_id).first()
+        if job is not None:
+            target_job = job
+            input_text = input_text or job.description
+
+    if payload.profile_id is not None:
+        profile_obj = (
+            db.query(UserSkillProfile)
+            .filter(UserSkillProfile.id == payload.profile_id)
+            .first()
+        )
+        if profile_obj is not None:
+            profile = _profile_to_dict(profile_obj)
+
+    job_data = payload.job_data or []
+    if not job_data:
+        for job in db.query(Job).all():
+            job_data.append(
+                {
+                    "title": job.title,
+                    "city": job.city,
+                    "salary_min": job.salary_min,
+                    "salary_max": job.salary_max,
+                    "required_skills": _load_json_list(job.required_skills),
+                }
+            )
+
+    state: JobMatchState = {
+        "input_text": input_text,
+        "profile": profile,
+        "target_job": target_job,
+        "job_data": job_data,
     }
+
+    try:
+        async for event in run_job_match_stream(db, state):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    except Exception as exc:
+        logger.exception("流式分析失败")
+        error_event = {
+            "node": "error",
+            "status": "failed",
+            "message": str(exc),
+        }
+        yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+
+
+@api_router.post("/matches/stream")
+def match_stream(
+    payload: MatchStreamRequest,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    return StreamingResponse(
+        _match_stream_events(db, payload),
+        media_type="text/event-stream",
+    )

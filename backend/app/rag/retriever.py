@@ -1,141 +1,164 @@
+"""Hybrid retriever for job descriptions and skill definitions.
+
+Combines Chroma vector search with SQL prefiltering and a lightweight
+keyword re-ranking step.
+"""
+
+import json
 import logging
-import time
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.case import RiskCase
-from app.models.enterprise import Enterprise
-from app.rag.embeddings import get_embedding_model
-from app.rag.vector_store import VectorStore
+from app.models import Company, Job
+from app.rag.vector_store import get_vector_store
 
 logger = logging.getLogger(__name__)
 
 
-class HybridRetriever:
-    """Hybrid retrieval combining vector similarity with structured SQL filters."""
+def _tokenize(text: str) -> set[str]:
+    """Extract English words / numbers / Chinese characters as tokens."""
+    if not text:
+        return set()
+    tokens = re.findall(r"[a-zA-Z0-9+#.]+|[\u4e00-\u9fff]+", text)
+    return {t.lower() for t in tokens if len(t) > 1}
+
+
+def _keyword_score(query: str, document: str, metadata: dict[str, Any]) -> float:
+    """Return normalized keyword overlap between query and indexed content."""
+    query_tokens = _tokenize(query)
+    if not query_tokens:
+        return 0.0
+
+    parts = [document]
+    meta_text = json.dumps(metadata, ensure_ascii=False)
+    parts.append(meta_text)
+    doc_tokens = _tokenize(" ".join(parts))
+
+    matches = len(query_tokens & doc_tokens)
+    return matches / len(query_tokens)
+
+
+class HybridJobRetriever:
+    """Retrieve relevant jobs and skills using vector + SQL + keyword signals."""
 
     def __init__(self, db: Session):
         self.db = db
-        self.case_store = VectorStore("risk_cases")
-        self.enterprise_store = VectorStore("enterprises")
-        self.embedder = get_embedding_model()
+        self.vector_store = get_vector_store()
 
-    def retrieve_cases(
+    def _prefilter_job_ids(
+        self,
+        city: str | None = None,
+        industry: str | None = None,
+        experience_level: str | None = None,
+    ) -> list[int] | None:
+        """SQL prefilter on structured Job/Company fields.
+
+        Returns a list of candidate job ids, or None when no filters are given.
+        """
+        filters_applied = False
+        query = self.db.query(Job.id)
+
+        if city:
+            query = query.filter(Job.city == city)
+            filters_applied = True
+        if experience_level:
+            query = query.filter(Job.experience_level == experience_level)
+            filters_applied = True
+        if industry:
+            query = query.join(Company, Job.company_id == Company.id)
+            query = query.filter(Company.industry == industry)
+            filters_applied = True
+
+        if not filters_applied:
+            return None
+
+        return [row[0] for row in query.all()]
+
+    def _build_job_where(
+        self,
+        city: str | None = None,
+        industry: str | None = None,
+        experience_level: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Build a Chroma metadata filter from SQL-prefiltered job ids."""
+        candidate_ids = self._prefilter_job_ids(
+            city=city, industry=industry, experience_level=experience_level
+        )
+        where: dict[str, Any] = {"doc_type": "job"}
+        if candidate_ids is not None:
+            if not candidate_ids:
+                # No SQL candidates -> empty result; use an impossible filter
+                return {"$and": [where, {"job_id": {"$in": [-1]}}]}
+            where = {"$and": [where, {"job_id": {"$in": candidate_ids}}]}
+        return where
+
+    def _rerank(
         self,
         query: str,
+        candidates: list[dict[str, Any]],
+        top_k: int,
+    ) -> list[dict[str, Any]]:
+        """Combine vector similarity with keyword overlap and return top_k."""
+        for candidate in candidates:
+            vec_score = candidate.get("score") or 0.0
+            kw_score = _keyword_score(
+                query, candidate.get("document", ""), candidate.get("metadata", {})
+            )
+            candidate["keyword_score"] = round(kw_score, 4)
+            candidate["hybrid_score"] = round(0.7 * vec_score + 0.3 * kw_score, 4)
+
+        candidates.sort(key=lambda x: x["hybrid_score"], reverse=True)
+        return candidates[:top_k]
+
+    def search_jobs(
+        self,
+        query: str,
+        city: str | None = None,
         industry: str | None = None,
-        risk_type: str | None = None,
+        experience_level: str | None = None,
+        top_k: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Hybrid search for job descriptions."""
+        where = self._build_job_where(city, industry, experience_level)
+        # Retrieve extra candidates so reranking has room to improve ordering
+        candidates = self.vector_store.query_similar(
+            query=query, filters=where, top_k=max(top_k * 3, 10)
+        )
+        return self._rerank(query, candidates, top_k)
+
+    def search_skills(
+        self,
+        query: str,
+        category: str | None = None,
+        top_k: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Hybrid search for skill definitions and aliases."""
+        where: dict[str, Any] = {"doc_type": "skill"}
+        if category:
+            where = {"$and": [where, {"category": category}]}
+        candidates = self.vector_store.query_similar(
+            query=query, filters=where, top_k=max(top_k * 3, 10)
+        )
+        return self._rerank(query, candidates, top_k)
+
+    def retrieve_for_match(
+        self,
+        profile_skills: list[str] | str,
+        target_job_title: str | None = None,
         top_k: int = 5,
     ) -> list[dict[str, Any]]:
-        start = time.time()
+        """Retrieve reference JDs for the matching agent given a skill profile."""
+        if isinstance(profile_skills, str):
+            profile_skills = [profile_skills]
 
-        # SQL pre-filter to narrow candidate set (keeps vector search fast)
-        q = self.db.query(RiskCase)
-        if industry:
-            q = q.filter(RiskCase.industry == industry)
-        if risk_type:
-            q = q.filter(RiskCase.risk_type == risk_type)
-        sql_candidates = q.limit(200).all()
+        query = " ".join(str(skill) for skill in profile_skills)
+        where: dict[str, Any] = {"doc_type": "job"}
+        if target_job_title:
+            where = {"$and": [where, {"title": target_job_title}]}
 
-        candidate_ids = [str(c.id) for c in sql_candidates]
-
-        # If vector store already has embeddings, do vector rerank
-        if candidate_ids:
-            try:
-                where = {"id": {"$in": candidate_ids}}
-                if industry:
-                    where["industry"] = industry
-                if risk_type:
-                    where["risk_type"] = risk_type
-                results = self.case_store.query([query], n_results=min(top_k * 2, 20), where=where)
-                ids = results["ids"][0]
-                distances = results["distances"][0]
-                case_map = {str(c.id): c for c in sql_candidates}
-                output = []
-                for cid, dist in zip(ids, distances):
-                    c = case_map.get(cid)
-                    if c:
-                        output.append(
-                            {
-                                "id": c.id,
-                                "title": c.title,
-                                "summary": c.summary,
-                                "industry": c.industry,
-                                "risk_type": c.risk_type,
-                                "risk_level": c.risk_level,
-                                "vector_score": float(1 - dist),
-                            }
-                        )
-                elapsed = int((time.time() - start) * 1000)
-                logger.debug(f"Hybrid case retrieval took {elapsed}ms")
-                return output[:top_k]
-            except Exception as e:
-                logger.warning(f"Vector retrieval failed: {e}; falling back to SQL")
-
-        # Fallback: keyword-ish SQL ordering by title relevance
-        if industry and risk_type:
-            q = q.order_by(RiskCase.risk_level.desc())
-        fallback = [
-            {
-                "id": c.id,
-                "title": c.title,
-                "summary": c.summary,
-                "industry": c.industry,
-                "risk_type": c.risk_type,
-                "risk_level": c.risk_level,
-                "vector_score": None,
-            }
-            for c in sql_candidates[:top_k]
-        ]
-        return fallback
-
-    def retrieve_enterprises(self, query: str, top_k: int = 3) -> list[dict[str, Any]]:
-        try:
-            results = self.enterprise_store.query([query], n_results=top_k)
-            ids = results["ids"][0]
-            enterprises = (
-                self.db.query(Enterprise).filter(Enterprise.id.in_([int(i) for i in ids])).all()
-            )
-            ent_map = {str(e.id): e for e in enterprises}
-            return [
-                {
-                    "id": ent_map[i].id,
-                    "name": ent_map[i].name,
-                    "industry": ent_map[i].industry,
-                }
-                for i in ids
-                if i in ent_map
-            ]
-        except Exception as e:
-            logger.warning(f"Enterprise retrieval failed: {e}")
-            return []
-
-    def index_case(self, case: RiskCase):
-        doc = (
-            f"{case.title}。{case.summary}。"
-            f"行业：{case.industry}，风险类型：{case.risk_type}，等级：{case.risk_level}。"
+        candidates = self.vector_store.query_similar(
+            query=query, filters=where, top_k=max(top_k * 3, 10)
         )
-        self.case_store.upsert(
-            ids=[str(case.id)],
-            documents=[doc],
-            metadatas=[
-                {
-                    "id": str(case.id),
-                    "industry": case.industry,
-                    "risk_type": case.risk_type,
-                }
-            ],
-        )
-
-    def index_enterprise(self, enterprise: Enterprise):
-        tags = "，".join(enterprise.business_tags or [])
-        doc = (
-            f"{enterprise.name}。行业：{enterprise.industry}，"
-            f"规模：{enterprise.scale}，地区：{enterprise.region}，业务标签：{tags}。"
-        )
-        self.enterprise_store.upsert(
-            ids=[str(enterprise.id)],
-            documents=[doc],
-            metadatas=[{"id": str(enterprise.id), "industry": enterprise.industry}],
-        )
+        return self._rerank(query, candidates, top_k)

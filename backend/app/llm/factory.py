@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 from langchain_core.language_models.chat_models import BaseChatModel

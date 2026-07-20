@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Starting CPublic Sentiment locally..."
+echo "Starting TalentMatch Engine locally..."
 
 # Backend
 if [ ! -d "backend/.venv" ]; then

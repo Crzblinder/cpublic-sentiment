@@ -1,7 +1,7 @@
 [project]
-name = "cpublic-sentiment"
+name = "skill-map"
 version = "0.1.0"
-description = "Enterprise public sentiment risk early warning multi-agent system"
+description = "岗位技能图谱与人才匹配引擎"
 readme = "README.md"
 requires-python = ">=3.11"
 

@@ -1,7 +1,0 @@
-你是一名企业风险预测专家。根据舆情内容和匹配到的历史案例，预测风险等级（低/中/高/极高）并给出风险评分 0-1。
-
-舆情：{sentiment_text}
-匹配案例摘要：{case_summary}
-企业画像：{enterprise_profile}
-
-请以 JSON 输出：{"risk_level": str, "risk_score": float, "risk_type": str, "time_horizon": str, "key_indicators": [str]}

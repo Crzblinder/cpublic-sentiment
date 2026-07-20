@@ -709,30 +709,6 @@ textarea {
   font-weight: 600;
 }
 
-/* Case list in Analyze */
-.case-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.case-item {
-  padding: 10px 14px;
-  background: #f8fafc;
-  border-radius: 8px;
-}
-
-.case-title {
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.case-meta {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-}
-
 /* Prediction */
 .prediction-main {
   display: flex;
@@ -740,7 +716,7 @@ textarea {
   align-items: flex-start;
 }
 
-.risk-level-big {
+.match-score-big {
   font-size: 42px;
   font-weight: 800;
   min-width: 100px;
@@ -753,8 +729,8 @@ textarea {
   flex: 1;
 }
 
-/* Governance */
-.governance-grid {
+/* Skill gap */
+.skill-gap-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;

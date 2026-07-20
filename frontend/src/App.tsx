@@ -1,23 +1,23 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
-import Analyze from './pages/Analyze'
-import Cases from './pages/Cases'
-import Dashboard from './pages/Dashboard'
-import Enterprises from './pages/Enterprises'
-import Evaluation from './pages/Evaluation'
+import SkillDashboard from './pages/SkillDashboard'
+import JobMatch from './pages/JobMatch'
+import JobLibrary from './pages/JobLibrary'
+import SkillGraph from './pages/SkillGraph'
+import TrendAnalysis from './pages/TrendAnalysis'
 
 const NAV_ITEMS = [
   { to: '/', icon: '📊', label: '仪表盘' },
-  { to: '/analyze', icon: '🔍', label: '舆情分析' },
-  { to: '/cases', icon: '📁', label: '案例库' },
-  { to: '/enterprises', icon: '🏢', label: '企业画像' },
-  { to: '/evaluation', icon: '📈', label: '效果评估' },
+  { to: '/match', icon: '🎯', label: '岗位匹配' },
+  { to: '/jobs', icon: '💼', label: '岗位库' },
+  { to: '/skills', icon: '🧠', label: '技能图谱' },
+  { to: '/trends', icon: '📈', label: '趋势分析' },
 ]
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h1>CPublic Sentiment</h1>
+        <h1>TalentMatch Engine</h1>
         <nav>
           {NAV_ITEMS.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.to === '/'}>
@@ -36,11 +36,11 @@ export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/analyze" element={<Analyze />} />
-        <Route path="/cases" element={<Cases />} />
-        <Route path="/enterprises" element={<Enterprises />} />
-        <Route path="/evaluation" element={<Evaluation />} />
+        <Route path="/" element={<SkillDashboard />} />
+        <Route path="/match" element={<JobMatch />} />
+        <Route path="/jobs" element={<JobLibrary />} />
+        <Route path="/skills" element={<SkillGraph />} />
+        <Route path="/trends" element={<TrendAnalysis />} />
       </Routes>
     </Layout>
   )
