@@ -11,7 +11,7 @@ SOURCES = [
     {
         "name": "sina_finance_rss",
         "type": "rss",
-        "url": "https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2509&k=&num=30&page=1",
+        "url": "https://finance.sina.com.cn/",
         "parser": "json_api",
         "description": "新浪财经滚动新闻（公开 API）",
     },
@@ -25,7 +25,7 @@ SOURCES = [
     {
         "name": "cls_telegraph",
         "type": "api",
-        "url": "https://www.cls.cn/nodeapi/updateTelegraph",
+        "url": "https://www.cls.cn/",
         "parser": "json_api",
         "description": "财联社电报",
     },
