@@ -47,7 +47,9 @@ class SentimentService:
                     content=text,
                     source=source,
                     enterprise_name=(
-                        result.get("enterprise", {}).get("name") if result.get("enterprise") else None
+                        result.get("enterprise", {}).get("name")
+                        if result.get("enterprise")
+                        else None
                     ),
                     risk_level=result["prediction"].get("risk_level"),
                     risk_type=result["prediction"].get("risk_type"),

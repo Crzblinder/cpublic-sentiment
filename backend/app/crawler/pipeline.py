@@ -157,7 +157,10 @@ class CleaningPipeline:
             return soup.get_text(separator=" ", strip=True)
         except ImportError:
             # bs4 不可用时回退到正则
-            cleaned = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", text, flags=re.DOTALL | re.IGNORECASE)
+            cleaned = re.sub(
+                r"<(script|style)[^>]*>.*?</\1>",
+                "", text, flags=re.DOTALL | re.IGNORECASE,
+            )
             return re.sub(r"<[^>]+>", "", cleaned).strip()
 
     # ------------------------------------------------------------------

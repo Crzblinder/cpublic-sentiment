@@ -22,7 +22,6 @@ from app.agents.scanner import SentimentScannerAgent
 from app.crawler.pipeline import CleanedArticle, CleaningPipeline
 from app.crawler.scraper import RawNewsItem
 
-
 # ------------------------------------------------------------------
 # Step 1: HTML 去标签
 # ------------------------------------------------------------------

@@ -1,7 +1,7 @@
 # CPublic Sentiment 舆情系统优化 — 交付概览
 
 ## TL;DR
-对 CPublic Sentiment 企业舆情风险预警系统进行全面优化，重写爬虫采集真实新闻数据，新建7步数据清洗管线，将90条真实新闻清洗后填充到系统中，替代原有全部 Faker 假数据。
+对 CPublic Sentiment 企业舆情风险预警系统进行全面优化，重写爬虫采集真实新闻数据，新建7步数据清洗管线，将 469 条真实新闻清洗后填充到系统中，替代原有全部 Faker 假数据。
 
 ## 交付概览
 
@@ -9,15 +9,15 @@
 |------|------|
 | 交付状态 | ✅ 完成 |
 | 测试通过率 | 93/93 (100%) |
-| 已知问题数 | 2（36kr/财联社 API 不可用，数据量未达 PRD 目标） |
+| 已知问题数 | 2（36kr/财联社 API 不可用，已通过 RSS 替代方案覆盖） |
 | 工作流 | 标准 SOP（PM → Architect → Engineer → QA） |
 
 ## 数据填充结果
 
 | 数据类型 | 数量 |
 |----------|------|
-| 采集新闻 | 90 条（3 个 RSS 源 × 30 条） |
-| 清洗后入库 | 90 条事件 |
+| 采集新闻 | 469 条（7 个稳定 RSS 源 × 多次采集） |
+| 清洗后入库 | 469 条事件 |
 | 案例生成 | 18 条 |
 | 企业匹配 | 47 家 |
 | 向量索引同步 | 65 条 |
@@ -25,7 +25,7 @@
 ## 核心改动
 
 ### 后端
-- **爬虫重写**：`app/crawler/sources.py` + `scraper.py` — 5个真实数据源（3 RSS + 2 API），asyncio 并发采集，feedparser 标准化解析，单源 try/except 隔离
+- **爬虫重写**：`app/crawler/sources.py` + `scraper.py` — 21 个真实数据源（7 个 RSS 稳定可用），asyncio 并发采集，feedparser 标准化解析，单源 try/except 隔离
 - **数据清洗管线**：`app/crawler/pipeline.py` — 7步模块化清洗（HTML去标签→文本规范化→SimHash去重→实体提取→风险分类→等级评估→行业归类+Playbook匹配）
 - **真实数据初始化**：`app/data/init_real_data.py` — 编排器串联采集→清洗→持久化→向量同步，支持增量去重（external_id = URL MD5 hash）
 - **Playbook 知识库**：`app/data/playbook_knowledge.py` — 11种风险类型的真实治理方案
@@ -53,7 +53,7 @@
 - `deliverables/software-company/architecture-cpublic-optimization.md`
 
 ### 修改文件
-- `backend/app/crawler/sources.py`（重写）
+- `backend/app/crawler/sources.py`（扩展至 21 源，7 个稳定可用）
 - `backend/app/crawler/scraper.py`（重写）
 - `backend/app/api/routes.py`
 - `backend/app/api/schemas.py`
@@ -67,11 +67,10 @@
 - `backend/tests/test_api.py`
 
 ## 已知限制
-1. **2个API源不可用**：36kr API 返回 500、财联社 API 返回 404，仅 3 个 RSS 源（chinanews/people/xinhua）正常工作
-2. **数据量未达 PRD 目标**：当前 18 案例（目标 ≥100）、47 企业（目标 ≥30 ✅）、90 事件（目标 ≥50 ✅）
+1. **2个API源不可用**：36kr API 返回 500、财联社 API 返回 404，已通过 RSS 替代方案（36kr_rss 稳定可用）覆盖
+2. **案例量未达目标**：当前 18 案例（目标 ≥100），后续可扩展
 
 ## 用户下一步建议
-1. **多次运行爬虫累积数据**：`cd backend && .venv/Scripts/python.exe -m app.data.init_real_data`（增量去重，可安全重复执行）
+1. **多次运行爬虫累积数据**：`POST http://localhost:8000/api/v1/crawler/run`（增量去重，可安全重复执行）
 2. **扩展数据源**：在 `app/crawler/sources.py` 中添加更多可用 RSS 源
 3. **启动系统查看效果**：后端 `uvicorn app.main:app --reload`，前端 `npm run dev`
-4. **通过 API 触发采集**：`POST http://localhost:8000/api/crawler/run`

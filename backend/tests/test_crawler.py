@@ -11,18 +11,16 @@
 
 import asyncio
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import httpx
-import pytest
 
 os.environ.setdefault("OPENAI_API_KEY", "")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_sentiment.db")
 os.environ.setdefault("VECTOR_DB_PATH", "./test_chroma_data")
 
-from app.crawler.scraper import BROWSER_UA, MAX_ITEMS_PER_SOURCE, NewsScraper, RawNewsItem, get_status
+from app.crawler.scraper import MAX_ITEMS_PER_SOURCE, NewsScraper, RawNewsItem, get_status
 from app.crawler.sources import SOURCES
-
 
 # ------------------------------------------------------------------
 # RawNewsItem 数据类测试
@@ -80,8 +78,8 @@ class TestSourcesConfig:
     """测试数据源配置完整性。"""
 
     def test_source_count(self):
-        """测试数据源数量为 5 个。"""
-        assert len(SOURCES) == 5
+        """测试数据源数量为 21 个。"""
+        assert len(SOURCES) == 21
 
     def test_source_fields(self):
         """测试每个源包含必需字段。"""
@@ -91,7 +89,14 @@ class TestSourcesConfig:
 
     def test_source_names_snake_case(self):
         """测试数据源名称为 snake_case 格式。"""
-        expected_names = {"chinanews_rss", "people_rss", "xinhua_rss", "36kr_api", "cls_api"}
+        expected_names = {
+            "chinanews_rss", "people_rss", "xinhua_rss",
+            "netease_rss", "sina_rss", "huanqiu_rss", "ifeng_rss",
+            "thepaper_rss", "china_news_rss", "ce_cn_rss",
+            "huxiu_rss", "sspai_rss", "ithome_rss", "pingwest_rss",
+            "ftchinese_rss", "jiemian_rss", "36kr_rss", "cls_rss", "sohu_rss",
+            "36kr_api", "cls_api",
+        }
         actual_names = {s["name"] for s in SOURCES}
         assert actual_names == expected_names
 
@@ -139,7 +144,7 @@ class TestRSSParsing:
                 <pubDate>Tue, 02 Jan 2024 00:00:00 GMT</pubDate>
             </item>
         </channel>
-        </rss>""").encode("utf-8")
+        </rss>""").encode()
 
         source = SOURCES[0]  # chinanews_rss
         items = scraper._parse_rss(rss_content, source)
@@ -155,7 +160,7 @@ class TestRSSParsing:
         """测试空 RSS 源返回空列表。"""
         scraper = NewsScraper()
         rss_content = ("""<?xml version="1.0"?>
-        <rss><channel><title>空</title></channel></rss>""").encode("utf-8")
+        <rss><channel><title>空</title></channel></rss>""").encode()
         source = SOURCES[0]
         items = scraper._parse_rss(rss_content, source)
         assert len(items) == 0
@@ -168,7 +173,7 @@ class TestRSSParsing:
         <item>
             <title>只有标题的新闻</title>
         </item>
-        </channel></rss>""").encode("utf-8")
+        </channel></rss>""").encode()
         source = SOURCES[0]
         items = scraper._parse_rss(rss_content, source)
         assert len(items) == 1
@@ -318,8 +323,8 @@ class TestSourceFailureIsolation:
 
         # chinanews_rss 应在失败列表中
         assert "chinanews_rss" in status["sources_failed"]
-        # 其他 4 个源应该成功
-        assert len(status["sources_ok"]) == 4
+        # 其他 20 个源应该成功
+        assert len(status["sources_ok"]) == 20
         # 应该有数据返回（来自非 chinanews 源）
         assert len(items) >= 4
         # 所有返回的数据不包含 chinanews_rss 的
@@ -338,7 +343,7 @@ class TestSourceFailureIsolation:
 
         status = get_status()
         assert len(items) == 0
-        assert len(status["sources_failed"]) == 5
+        assert len(status["sources_failed"]) == 21
         assert len(status["sources_ok"]) == 0
 
     def test_sources_detail_tracking(self):
@@ -359,7 +364,7 @@ class TestSourceFailureIsolation:
         status = get_status()
         assert "sources_detail" in status
         details = status["sources_detail"]
-        assert len(details) == 5
+        assert len(details) == 21
 
         for detail in details:
             if detail["name"] == "people_rss":
