@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import AbTestRequest, EventResponse, LabelRequest, SentimentAnalyzeRequest
 from app.config import get_settings
+from app.crawler.pipeline import CleaningPipeline
 from app.crawler.scraper import NewsScraper
 from app.crawler.scraper import get_status as crawler_get_status
 from app.models.base import get_db
@@ -103,6 +104,7 @@ def list_events(
             "risk_level": e.risk_level,
             "risk_type": e.risk_type,
             "risk_score": e.risk_score,
+            "source": e.source,
             "status": e.status,
             "created_at": e.created_at.isoformat() if e.created_at else None,
         }
@@ -177,7 +179,7 @@ def list_cases(
     if risk_level:
         q = q.filter(RiskCase.risk_level == risk_level)
     if search:
-        q = q.filter(RiskCase.title.contains(search))
+        q = q.filter(RiskCase.title.contains(search) | RiskCase.summary.contains(search))
     total = q.count()
     cases = q.order_by(RiskCase.id.desc()).offset(skip).limit(limit).all()
     return {
@@ -260,20 +262,61 @@ def get_enterprise_events(
 @api_router.post("/crawler/run")
 async def run_crawler(db: Session = Depends(get_db)):
     scraper = NewsScraper()
-    items = await scraper.fetch_all()
-    # 自动分析采集到的文本
+    raw_items = await scraper.fetch_all()
+    pipeline = CleaningPipeline()
+    articles = pipeline.clean(raw_items)
+
+    # 查询已有 external_id 集合，用于增量去重
+    existing_ids = {
+        row.external_id
+        for row in db.query(SentimentEvent.external_id).all()
+        if row.external_id
+    }
+
+    persisted = 0
+    deduped = 0
+    for article in articles:
+        if article.url_hash in existing_ids:
+            deduped += 1
+            continue
+        # 数据质量校验：跳过缺失关键字段或风险等级异常的条目
+        if not article.title or not article.cleaned_content or not article.source_name:
+            continue
+        if article.risk_level not in ("低", "中", "高", "极高"):
+            continue
+        event = SentimentEvent(
+            title=article.title[:512],
+            content=article.cleaned_content,
+            source=article.source_name,
+            url=article.url,
+            external_id=article.url_hash,
+            enterprise_name=article.entities[0] if article.entities else None,
+            risk_level=article.risk_level,
+            risk_type=article.risk_type,
+            risk_score=article.risk_score,
+            governance_plan=article.governance_playbook,
+            status="processed",
+        )
+        db.add(event)
+        persisted += 1
+    db.commit()
+
+    # 选择性分析高/极高风险条目（最多 5 条）
     analyzed = 0
     service = SentimentService(db)
-    for item in items[:10]:  # 每次最多分析 10 条
+    high_risk = [a for a in articles if a.risk_level in ("高", "极高")][:5]
+    for article in high_risk:
         try:
-            text = item.get("content", item.get("title", ""))
-            if len(text) >= 10:
-                service.analyze(text=text[:2000], source=item.get("source", "crawler"))
-                analyzed += 1
+            service.analyze(text=article.cleaned_content[:2000], source=article.source_name)
+            analyzed += 1
         except Exception:
             pass
+
     return {
-        "fetched": len(items),
+        "fetched": len(raw_items),
+        "cleaned": len(articles),
+        "persisted": persisted,
+        "deduped": deduped,
         "analyzed": analyzed,
         "status": crawler_get_status(),
     }

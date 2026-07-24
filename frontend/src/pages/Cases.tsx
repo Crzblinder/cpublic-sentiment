@@ -63,7 +63,7 @@ export default function Cases() {
             onChange={(e) => setSearch(e.target.value)}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            placeholder="搜索标题关键词"
+            placeholder="搜索标题或摘要"
             style={{ maxWidth: 220 }}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />

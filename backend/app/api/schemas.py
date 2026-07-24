@@ -26,7 +26,19 @@ class EventResponse(BaseModel):
     risk_level: str | None
     risk_type: str | None
     risk_score: float
+    source: str | None = None
     status: str
     created_at: str | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CrawlerRunResponse(BaseModel):
+    """爬虫运行结果响应。"""
+
+    fetched: int
+    cleaned: int
+    persisted: int
+    deduped: int
+    analyzed: int
+    status: dict

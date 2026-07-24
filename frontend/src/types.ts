@@ -4,6 +4,7 @@ export interface EventItem {
   risk_level: string | null
   risk_type: string | null
   risk_score: number
+  source: string | null
   status: string
   created_at: string | null
 }
@@ -123,11 +124,27 @@ export interface EnterpriseDetail {
 
 /* ---- Crawler ---- */
 
+export interface CrawlerSourceDetail {
+  name: string
+  count: number
+  ok: boolean
+}
+
 export interface CrawlerStatus {
   last_run: string | null
   total_fetched: number
   sources_ok: string[]
   sources_failed: string[]
+  sources_detail?: CrawlerSourceDetail[]
+}
+
+export interface CrawlerRunResult {
+  fetched: number
+  cleaned: number
+  persisted: number
+  deduped: number
+  analyzed: number
+  status: CrawlerStatus
 }
 
 export interface LlmStatus {

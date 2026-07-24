@@ -1,5 +1,6 @@
 import type {
   CaseItem,
+  CrawlerRunResult,
   CrawlerStatus,
   DashboardStats,
   EnterpriseDetail,
@@ -139,7 +140,7 @@ export const api = {
     request(`/enterprises/${id}/events?skip=${skip}&limit=${limit}`),
 
   /* ---- 爬虫 ---- */
-  runCrawler: (): Promise<{ fetched: number; analyzed: number; status: CrawlerStatus }> =>
+  runCrawler: (): Promise<CrawlerRunResult> =>
     request('/crawler/run', { method: 'POST' }),
 
   getCrawlerStatus: (): Promise<CrawlerStatus> => request('/crawler/status'),

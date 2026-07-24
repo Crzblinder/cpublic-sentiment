@@ -1,0 +1,72 @@
+%% CPublic Sentiment — 真实数据初始化流程时序图
+%% 对应 architecture-cpublic-optimization.md 第 4.1 节
+
+sequenceDiagram
+    autonumber
+    participant Dev as 开发者/脚本
+    participant Init as DataInitializer
+    participant Scrape as NewsScraper
+    participant Pipe as CleaningPipeline
+    participant DB as Database(Session)
+    participant RAG as HybridRetriever
+
+    Dev->>Init: run()
+    Init->>Scrape: fetch_all()
+
+    par 源1 (RSS - chinanews)
+        Scrape->>Scrape: httpx.get(rss_url)
+        Scrape->>Scrape: feedparser.parse(content)
+        Scrape->>Scrape: _parse_rss → [RawNewsItem]
+    and 源2 (RSS - people)
+        Scrape->>Scrape: httpx.get(rss_url)
+        Scrape->>Scrape: feedparser.parse(content)
+    and 源3 (API - 36kr)
+        Scrape->>Scrape: httpx.get(api_url)
+        Scrape->>Scrape: _parse_api(json) → [RawNewsItem]
+    and 源4 (API - cls)
+        Scrape->>Scrape: httpx.get(api_url)
+        Scrape->>Scrape: _parse_api(json)
+    and 源5 (RSS - xinhua)
+        Scrape->>Scrape: httpx.get(rss_url)
+        Scrape->>Scrape: feedparser.parse(content)
+    end
+
+    Note over Scrape: 单源失败 → 记录 sources_failed，不中断
+    Scrape-->>Init: list[RawNewsItem]
+
+    Init->>Pipe: clean(raw_items)
+    Pipe->>Pipe: ① _strip_html (BeautifulSoup)
+    Pipe->>Pipe: ② _normalize_text (去空白/截断)
+    Pipe->>Pipe: ③ _compute_url_hash + _is_duplicate
+    Pipe->>Pipe: ④ _extract_entities (正则)
+    Pipe->>Pipe: ⑤ _classify_risk_type (RISK_KEYWORDS)
+    Pipe->>Pipe: ⑥ _assess_risk_level (加权计算)
+    Pipe->>Pipe: ⑦ _classify_industry (INDUSTRY_KEYWORDS)
+    Pipe->>Pipe: _match_playbook (PlaybookKnowledgeBase)
+    Pipe-->>Init: list[CleanedArticle]
+
+    rect rgb(240, 248, 255)
+        Note over Init, RAG: 三表入库 + 向量索引同步
+        Init->>Init: _validate_article (必填校验)
+        Init->>DB: _fill_cases (risk_type != '其他')
+        loop 每个有效 article
+            Init->>DB: INSERT RiskCase (external_id=url_hash 去重)
+        end
+        Init->>DB: _fill_enterprises (entities 去重)
+        loop 每个唯一企业
+            Init->>DB: INSERT Enterprise (name 去重)
+        end
+        Init->>DB: _fill_events (全部 articles)
+        loop 每个 article
+            Init->>DB: INSERT SentimentEvent (external_id 去重)
+        end
+        Init->>RAG: _sync_vector_index
+        loop 每个新 RiskCase
+            RAG->>RAG: index_case(case) → ChromaDB upsert
+        end
+        loop 每个新 Enterprise
+            RAG->>RAG: index_enterprise(ent) → ChromaDB upsert
+        end
+    end
+
+    Init-->>Dev: {fetched, cleaned, cases, enterprises, events, indexed}

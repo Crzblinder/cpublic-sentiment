@@ -5,7 +5,7 @@ import {
   LineChart, Line,
 } from 'recharts'
 import { api } from '../api'
-import type { DashboardStats, TrendPoint, EventItem } from '../types'
+import type { CrawlerStatus, DashboardStats, TrendPoint, EventItem } from '../types'
 
 const PIE_COLORS = ['#16a34a', '#f59e0b', '#dc2626', '#991b1b']
 const BAR_COLOR = '#2563eb'
@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [trend, setTrend] = useState<TrendPoint[]>([])
   const [events, setEvents] = useState<EventItem[]>([])
+  const [crawlerStatus, setCrawlerStatus] = useState<CrawlerStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
@@ -29,14 +30,16 @@ export default function Dashboard() {
     setErrors([])
     const nextErrors: string[] = []
     try {
-      const [statsRes, trendRes, eventsRes] = await Promise.all([
+      const [statsRes, trendRes, eventsRes, crawlerRes] = await Promise.all([
         api.getDashboardStats().catch((e) => { nextErrors.push(`统计: ${e.message}`); return null }),
         api.getTrend(30).catch((e) => { nextErrors.push(`趋势: ${e.message}`); return [] }),
         api.listEvents(0, 20).catch((e) => { nextErrors.push(`事件: ${e.message}`); return [] }),
+        api.getCrawlerStatus().catch((e) => { nextErrors.push(`爬虫状态: ${e.message}`); return null }),
       ])
       if (statsRes) setStats(statsRes)
-      if (trendRes) setTrend(trendRes)
-      if (eventsRes) setEvents(eventsRes)
+      if (trendRes) setTrend(trendRes as TrendPoint[])
+      if (eventsRes) setEvents(eventsRes as EventItem[])
+      if (crawlerRes) setCrawlerStatus(crawlerRes)
       setUpdatedAt(new Date())
       if (nextErrors.length) setErrors(nextErrors)
     } finally {
@@ -103,6 +106,50 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ---- 数据源状态卡片 ---- */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3>数据源状态</h3>
+        {crawlerStatus?.last_run ? (
+          <div>
+            <div className="muted-text" style={{ marginBottom: 8, fontSize: 12 }}>
+              最近运行：{new Date(crawlerStatus.last_run).toLocaleString('zh-CN')}
+              {' | '}
+              总采集量：{crawlerStatus.total_fetched} 条
+              {' | '}
+              成功源：{crawlerStatus.sources_ok.length}
+              {' | '}
+              失败源：{crawlerStatus.sources_failed.length}
+            </div>
+            {crawlerStatus.sources_detail && crawlerStatus.sources_detail.length > 0 && (
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {crawlerStatus.sources_detail.map((src) => (
+                  <div
+                    key={src.name}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 6,
+                      border: `1px solid ${src.ok ? '#16a34a40' : '#dc262640'}`,
+                      background: src.ok ? '#16a34a0a' : '#dc26260a',
+                      fontSize: 13,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{src.name}</span>
+                    {' '}
+                    <span className={src.ok ? 'muted-text' : ''} style={{ color: src.ok ? '#16a34a' : '#dc2626' }}>
+                      {src.ok ? `✓ ${src.count} 条` : '✗ 失败'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="chart-empty">
+            爬虫尚未运行，请前往「舆情分析」页面触发采集
+          </div>
+        )}
+      </div>
+
       {/* ---- 图表区域 ---- */}
       <div className="chart-row">
         {/* 风险等级饼图 */}
@@ -128,7 +175,7 @@ export default function Dashboard() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="chart-empty">暂无数据</div>
+            <div className="chart-empty">暂无数据，请先运行爬虫采集</div>
           )}
         </div>
 
@@ -146,7 +193,7 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="chart-empty">暂无数据</div>
+            <div className="chart-empty">暂无数据，请先运行爬虫采集</div>
           )}
         </div>
       </div>
@@ -169,7 +216,7 @@ export default function Dashboard() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="chart-empty">暂无数据</div>
+            <div className="chart-empty">暂无数据，请先运行爬虫采集</div>
           )}
         </div>
 
@@ -187,7 +234,7 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="chart-empty">暂无数据</div>
+            <div className="chart-empty">暂无数据，请先运行爬虫采集</div>
           )}
         </div>
       </div>
@@ -208,7 +255,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <div className="chart-empty">暂无数据</div>
+            <div className="chart-empty">暂无数据，请先运行爬虫采集</div>
           )}
       </div>
 
@@ -221,6 +268,7 @@ export default function Dashboard() {
               <th>标题</th>
               <th>风险等级</th>
               <th>风险类型</th>
+              <th>来源</th>
               <th>评分</th>
               <th>时间</th>
             </tr>
@@ -231,12 +279,15 @@ export default function Dashboard() {
                 <td>{e.title}</td>
                 <td><span className={levelClass(e.risk_level)}>{e.risk_level ?? '-'}</span></td>
                 <td>{e.risk_type ?? '-'}</td>
+                <td className="muted-text" style={{ fontSize: 12 }}>{e.source ?? '-'}</td>
                 <td>{e.risk_score.toFixed(2)}</td>
                 <td className="muted-text">{e.created_at ? new Date(e.created_at).toLocaleString('zh-CN') : '-'}</td>
               </tr>
             ))}
             {events.length === 0 && (
-              <tr><td colSpan={5} style={{ textAlign: 'center' }}>暂无事件</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center' }}>
+                暂无事件，请先运行爬虫采集数据
+              </td></tr>
             )}
           </tbody>
         </table>

@@ -1,0 +1,97 @@
+%% CPublic Sentiment — 清洗管线类图
+%% 对应 architecture-cpublic-optimization.md 第 3 节
+
+classDiagram
+    direction LR
+
+    class RawNewsItem {
+        +title: str
+        +content: str
+        +source_name: str
+        +url: str
+        +published_at: str
+    }
+
+    class CleanedArticle {
+        +title: str
+        +cleaned_content: str
+        +source_name: str
+        +url: str
+        +url_hash: str
+        +entities: list~str~
+        +industry: str
+        +risk_type: str
+        +risk_level: str
+        +risk_score: float
+        +tags: list~str~
+        +governance_playbook: dict
+        +published_at: str
+    }
+
+    class NewsScraper {
+        -timeout: float
+        -user_agent: str
+        +fetch_all() list~RawNewsItem~
+        -_fetch_source(client, source) list~RawNewsItem~
+        -_parse_rss(content, source) list~RawNewsItem~
+        -_parse_api(resp_json, source) list~RawNewsItem~
+        +get_status() dict
+    }
+
+    class CleaningPipeline {
+        +MAX_CONTENT_LENGTH: int = 5000
+        +SIMHASH_BITS: int = 64
+        +SIMHASH_THRESHOLD: float = 0.85
+        +clean(raw_items) list~CleanedArticle~
+        -_strip_html(text) str
+        -_normalize_text(text) str
+        -_compute_url_hash(url) str
+        -_simhash(text) int
+        -_hamming_distance(h1, h2) int
+        -_simhash_similarity(h1, h2) float
+        -_is_duplicate(article, seen_hashes, seen_simhashes) bool
+        -_extract_entities(text) list~str~
+        -_classify_risk_type(text) str
+        -_assess_risk_level(text, risk_type) tuple~str, float~
+        -_classify_industry(text) str
+        -_build_tags(risk_type, industry, entities) list~str~
+    }
+
+    class PlaybookKnowledgeBase {
+        +PLAYBOOKS: dict
+        +get_playbook(risk_type) dict
+        +generate_summary(risk_type, content) str
+    }
+
+    class DataInitializer {
+        +db: Session
+        +retriever: HybridRetriever
+        +scraper: NewsScraper
+        +pipeline: CleaningPipeline
+        +run() dict
+        -_fill_cases(articles) int
+        -_fill_enterprises(articles) int
+        -_fill_events(articles) int
+        -_sync_vector_index() None
+        -_validate_article(article) bool
+        -_compute_enterprise_risk_history(enterprise) list
+    }
+
+    class CrawlerRunResponse {
+        +fetched: int
+        +cleaned: int
+        +persisted: int
+        +deduped: int
+        +analyzed: int
+        +status: dict
+    }
+
+    NewsScraper --> RawNewsItem : produces
+    CleaningPipeline --> RawNewsItem : consumes
+    CleaningPipeline --> CleanedArticle : produces
+    CleaningPipeline ..> SentimentScannerAgent : references keywords
+    CleanedArticle ..> PlaybookKnowledgeBase : uses for governance_playbook
+    DataInitializer --> NewsScraper : uses
+    DataInitializer --> CleaningPipeline : uses
+    DataInitializer --> HybridRetriever : uses
+    DataInitializer --> PlaybookKnowledgeBase : uses
