@@ -5,7 +5,7 @@ import {
   LineChart, Line,
 } from 'recharts'
 import { api } from '../api'
-import type { CrawlerStatus, DashboardStats, TrendPoint, EventItem } from '../types'
+import type { CrawlerStatus, DashboardStats, TrendPoint, EventItem, HighRiskEvent } from '../types'
 
 const PIE_COLORS = ['#16a34a', '#f59e0b', '#dc2626', '#991b1b']
 const BAR_COLOR = '#2563eb'
@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [trend, setTrend] = useState<TrendPoint[]>([])
   const [events, setEvents] = useState<EventItem[]>([])
+  const [highRiskEvents, setHighRiskEvents] = useState<HighRiskEvent[]>([])
   const [crawlerStatus, setCrawlerStatus] = useState<CrawlerStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -30,15 +31,17 @@ export default function Dashboard() {
     setErrors([])
     const nextErrors: string[] = []
     try {
-      const [statsRes, trendRes, eventsRes, crawlerRes] = await Promise.all([
+      const [statsRes, trendRes, eventsRes, highRiskRes, crawlerRes] = await Promise.all([
         api.getDashboardStats().catch((e) => { nextErrors.push(`统计: ${e.message}`); return null }),
         api.getTrend(30).catch((e) => { nextErrors.push(`趋势: ${e.message}`); return [] }),
         api.listEvents(0, 20).catch((e) => { nextErrors.push(`事件: ${e.message}`); return [] }),
+        api.getRecentHighRisk().catch((e) => { nextErrors.push(`高危: ${e.message}`); return [] }),
         api.getCrawlerStatus().catch((e) => { nextErrors.push(`爬虫状态: ${e.message}`); return null }),
       ])
       if (statsRes) setStats(statsRes)
       if (trendRes) setTrend(trendRes as TrendPoint[])
       if (eventsRes) setEvents(eventsRes as EventItem[])
+      if (highRiskRes) setHighRiskEvents(highRiskRes as HighRiskEvent[])
       if (crawlerRes) setCrawlerStatus(crawlerRes)
       setUpdatedAt(new Date())
       if (nextErrors.length) setErrors(nextErrors)
@@ -51,15 +54,26 @@ export default function Dashboard() {
     load()
   }, [load])
 
+  // 每 30 秒自动刷新
+  useEffect(() => {
+    const timer = setInterval(() => { load() }, 30000)
+    return () => clearInterval(timer)
+  }, [load])
+
   const s = stats?.summary
 
   return (
     <div>
       <div className="page-header">
         <h2>仪表盘</h2>
-        <button className="btn btn-sm btn-outline" onClick={load} disabled={loading}>
-          {loading ? '加载中...' : '刷新'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a href={api.getExportEventsCsvUrl()} className="btn btn-sm btn-outline" download>
+            导出 CSV
+          </a>
+          <button className="btn btn-sm btn-outline" onClick={load} disabled={loading}>
+            {loading ? '加载中...' : '刷新'}
+          </button>
+        </div>
       </div>
       {errors.map((err, i) => (
         <div key={i} className="error-banner">{err}</div>
@@ -149,6 +163,44 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* ---- 高危事件实时卡片 ---- */}
+      {highRiskEvents.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>高危事件预警</h3>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {highRiskEvents.map((e) => (
+              <div
+                key={e.id}
+                style={{
+                  flex: '1 1 200px',
+                  padding: 12,
+                  borderRadius: 8,
+                  border: '1px solid #dc262640',
+                  background: '#dc26260a',
+                  minWidth: 200,
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 14, lineHeight: 1.4 }}>
+                  {e.title}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+                  <span className={levelClass(e.risk_level)}>{e.risk_level ?? '-'}</span>
+                  <span className="muted-text">{e.risk_type ?? '-'}</span>
+                  <span className="muted-text" style={{ marginLeft: 'auto' }}>
+                    {e.risk_score.toFixed(1)}
+                  </span>
+                </div>
+                {e.created_at && (
+                  <div className="muted-text" style={{ fontSize: 11, marginTop: 4 }}>
+                    {new Date(e.created_at).toLocaleString('zh-CN')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ---- 图表区域 ---- */}
       <div className="chart-row">

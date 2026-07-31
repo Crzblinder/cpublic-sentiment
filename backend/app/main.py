@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -21,7 +22,15 @@ os.makedirs(settings.vector_db_path, exist_ok=True)
 async def lifespan(app: FastAPI):
     logger.info("Creating database tables if not exist...")
     Base.metadata.create_all(bind=engine)
+    # 启动爬虫定时采集任务
+    from app.crawler.scheduler import scheduler_loop
+    scheduler_task = asyncio.create_task(scheduler_loop())
     yield
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        logger.info("爬虫定时采集调度器已停止")
 
 
 app = FastAPI(

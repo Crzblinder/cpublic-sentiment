@@ -1,11 +1,16 @@
 import type {
+  AnalysisHistoryDetail,
+  AnalysisHistoryItem,
   CaseItem,
+  CrawlerLogItem,
   CrawlerRunResult,
   CrawlerStatus,
   DashboardStats,
   EnterpriseDetail,
   EnterpriseItem,
+  EnterpriseTrendPoint,
   EventItem,
+  HighRiskEvent,
   LlmStatus,
   Metrics,
   PaginatedResponse,
@@ -159,4 +164,30 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ dataset, agent_type: agentType }),
     }),
+
+  /* ---- 分析历史 ---- */
+  listAnalysisHistory: (skip = 0, limit = 20): Promise<PaginatedResponse<AnalysisHistoryItem>> => {
+    const qs = new URLSearchParams()
+    qs.set('skip', String(skip))
+    qs.set('limit', String(limit))
+    return request(`/analysis/history?${qs.toString()}`)
+  },
+
+  getAnalysisHistoryDetail: (id: number): Promise<AnalysisHistoryDetail> =>
+    request(`/analysis/history/${id}`),
+
+  /* ---- 高危事件 ---- */
+  getRecentHighRisk: (): Promise<HighRiskEvent[]> =>
+    request('/dashboard/recent-high-risk'),
+
+  /* ---- 导出 CSV ---- */
+  getExportEventsCsvUrl: (): string => `${API_BASE}/sentiment/events/export/csv`,
+
+  /* ---- 企业趋势 ---- */
+  getEnterpriseTrend: (id: number): Promise<EnterpriseTrendPoint[]> =>
+    request(`/enterprises/${id}/trend`),
+
+  /* ---- 爬虫日志 ---- */
+  getCrawlerLogs: (): Promise<CrawlerLogItem[]> =>
+    request('/crawler/logs'),
 }

@@ -4,6 +4,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.models.analysis_history import AnalysisHistory
 from app.models.sentiment import SentimentEvent
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,27 @@ settings = get_settings()
 class SentimentService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _save_history(self, text: str, result: dict[str, Any]) -> None:
+        """将分析结果持久化到 AnalysisHistory 表。"""
+        try:
+            history = AnalysisHistory(
+                text=text[:2000],
+                scan_result=result.get("scan", {}),
+                matched_cases=result.get("matched_cases", []),
+                enterprise=result.get("enterprise"),
+                prediction=result.get("prediction", {}),
+                governance=result.get("governance", {}),
+                reasoning_chain=result.get("reasoning_chain", []),
+                risk_level=result.get("prediction", {}).get("risk_level"),
+                risk_type=result.get("prediction", {}).get("risk_type"),
+                risk_score=str(result.get("prediction", {}).get("risk_score", "")),
+                response_time_ms=result.get("response_time_ms"),
+            )
+            self.db.add(history)
+            self.db.commit()
+        except Exception as e:
+            logger.warning("保存分析历史失败: %s", e)
 
     def analyze(
         self,
@@ -34,6 +56,7 @@ class SentimentService:
                 )
                 event_id = persist_event(self.db, text, result, source=source)
                 result["event_id"] = event_id
+                self._save_history(text, result)
                 return result
             else:
                 # Fallback: 旧版 Orchestrator
@@ -65,6 +88,7 @@ class SentimentService:
                 self.db.commit()
                 self.db.refresh(event)
                 result["event_id"] = event.id
+                self._save_history(text, result)
                 return result
         except Exception as e:
             # 空数据库或其他异常时返回基础结果，避免 500 错误
@@ -101,7 +125,7 @@ class SentimentService:
             self.db.commit()
             self.db.refresh(event)
 
-            return {
+            fallback_result = {
                 "event_id": event.id,
                 "text": text,
                 "scan": scan_result,
@@ -117,6 +141,8 @@ class SentimentService:
                 "response_time_ms": 0,
                 "prompt_variants": {"scanner": "fallback"},
             }
+            self._save_history(text, fallback_result)
+            return fallback_result
 
     def list_events(self, skip: int = 0, limit: int = 20) -> list[SentimentEvent]:
         return (

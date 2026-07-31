@@ -154,3 +154,65 @@ export interface LlmStatus {
   base_url: string
   is_fallback: boolean
 }
+
+/* ---- 分析历史 ---- */
+
+export interface AnalysisHistoryItem {
+  id: number
+  text: string
+  risk_level: string | null
+  risk_type: string | null
+  risk_score: string | null
+  response_time_ms: number | null
+  created_at: string | null
+}
+
+export interface AnalysisHistoryDetail {
+  id: number
+  text: string
+  scan_result: Record<string, unknown>
+  matched_cases: Array<Record<string, unknown>>
+  enterprise: Record<string, unknown> | null
+  prediction: Record<string, unknown>
+  governance: Record<string, unknown>
+  reasoning_chain: Array<Record<string, unknown>>
+  risk_level: string | null
+  risk_type: string | null
+  risk_score: string | null
+  response_time_ms: number | null
+  created_at: string | null
+}
+
+/* ---- 高危事件 ---- */
+
+export interface HighRiskEvent {
+  id: number
+  title: string
+  risk_level: string | null
+  risk_type: string | null
+  risk_score: number
+  source: string | null
+  created_at: string | null
+}
+
+/* ---- 爬虫日志 ---- */
+
+export interface CrawlerLogItem {
+  id: number
+  fetched: number
+  cleaned: number
+  persisted: number
+  deduped: number
+  sources_ok: string
+  sources_failed: string
+  error: string | null
+  created_at: string | null
+}
+
+/* ---- 企业趋势 ---- */
+
+export interface EnterpriseTrendPoint {
+  date: string
+  count: number
+  avg_score: number
+}

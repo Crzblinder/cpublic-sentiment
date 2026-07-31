@@ -4,10 +4,12 @@ import Cases from './pages/Cases'
 import Dashboard from './pages/Dashboard'
 import Enterprises from './pages/Enterprises'
 import Evaluation from './pages/Evaluation'
+import History from './pages/History'
 
 const NAV_ITEMS = [
   { to: '/', icon: '📊', label: '仪表盘' },
   { to: '/analyze', icon: '🔍', label: '舆情分析' },
+  { to: '/history', icon: '📋', label: '分析历史' },
   { to: '/cases', icon: '📁', label: '案例库' },
   { to: '/enterprises', icon: '🏢', label: '企业画像' },
   { to: '/evaluation', icon: '📈', label: '效果评估' },
@@ -38,6 +40,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/analyze" element={<Analyze />} />
+        <Route path="/history" element={<History />} />
         <Route path="/cases" element={<Cases />} />
         <Route path="/enterprises" element={<Enterprises />} />
         <Route path="/evaluation" element={<Evaluation />} />

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { LineChart, Line, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { api } from '../api'
-import type { EnterpriseItem, EnterpriseDetail } from '../types'
+import type { EnterpriseItem, EnterpriseDetail, EnterpriseTrendPoint } from '../types'
 
 function riskDot(score: number) {
   if (score >= 70) return '#dc2626'
@@ -21,6 +21,7 @@ export default function Enterprises() {
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<EnterpriseDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [trend, setTrend] = useState<EnterpriseTrendPoint[]>([])
 
   const pageSize = 12
 
@@ -40,8 +41,12 @@ export default function Enterprises() {
 
   const openDetail = (id: number) => {
     setDetailLoading(true)
-    api.getEnterpriseDetail(id)
-      .then(setSelected)
+    setTrend([])
+    Promise.all([
+      api.getEnterpriseDetail(id),
+      api.getEnterpriseTrend(id).catch(() => []),
+    ])
+      .then(([detail, trendData]) => { setSelected(detail); setTrend(trendData) })
       .catch((e) => setError(e.message))
       .finally(() => setDetailLoading(false))
   }
@@ -186,6 +191,24 @@ export default function Enterprises() {
                   <ResponsiveContainer width="100%" height={120}>
                     <LineChart data={selected.enterprise.risk_score_history}>
                       <Line type="monotone" dataKey="score" stroke="#2563eb" dot strokeWidth={3} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* 近 30 天事件趋势 */}
+              {trend.length > 0 && (
+                <div className="detail-section">
+                  <h4>近 30 天事件趋势</h4>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <LineChart data={trend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                      <YAxis yAxisId="left" />
+                      <YAxis yAxisId="right" orientation="right" />
+                      <Tooltip />
+                      <Line yAxisId="left" type="monotone" dataKey="count" stroke="#2563eb" name="事件数" dot={false} />
+                      <Line yAxisId="right" type="monotone" dataKey="avg_score" stroke="#f59e0b" name="平均风险分" dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

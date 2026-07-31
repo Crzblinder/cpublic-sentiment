@@ -1,8 +1,12 @@
+import csv
+import io
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.schemas import AbTestRequest, EventResponse, LabelRequest, SentimentAnalyzeRequest
@@ -10,8 +14,10 @@ from app.config import get_settings
 from app.crawler.pipeline import CleaningPipeline
 from app.crawler.scraper import NewsScraper
 from app.crawler.scraper import get_status as crawler_get_status
+from app.models.analysis_history import AnalysisHistory
 from app.models.base import get_db
 from app.models.case import RiskCase
+from app.models.crawler_log import CrawlerLog
 from app.models.enterprise import Enterprise
 from app.models.sentiment import SentimentEvent
 from app.services.dashboard_service import DashboardService
@@ -312,13 +318,25 @@ async def run_crawler(db: Session = Depends(get_db)):
         except Exception:
             pass
 
+    # 记录采集日志
+    status = crawler_get_status()
+    db.add(CrawlerLog(
+        fetched=len(raw_items),
+        cleaned=len(articles),
+        persisted=persisted,
+        deduped=deduped,
+        sources_ok=",".join(status.get("sources_ok", [])),
+        sources_failed=",".join(status.get("sources_failed", [])),
+    ))
+    db.commit()
+
     return {
         "fetched": len(raw_items),
         "cleaned": len(articles),
         "persisted": persisted,
         "deduped": deduped,
         "analyzed": analyzed,
-        "status": crawler_get_status(),
+        "status": status,
     }
 
 
@@ -368,3 +386,175 @@ def get_llm_status() -> dict[str, Any]:
         "base_url": "",
         "is_fallback": True,
     }
+
+
+# ---- 分析历史记录 ----
+
+@api_router.get("/analysis/history")
+def list_analysis_history(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    total = db.query(AnalysisHistory).count()
+    items = (
+        db.query(AnalysisHistory)
+        .order_by(AnalysisHistory.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "total": total,
+        "items": [
+            {
+                "id": h.id,
+                "text": h.text[:200],
+                "risk_level": h.risk_level,
+                "risk_type": h.risk_type,
+                "risk_score": h.risk_score,
+                "response_time_ms": h.response_time_ms,
+                "created_at": h.created_at.isoformat() if h.created_at else None,
+            }
+            for h in items
+        ],
+    }
+
+
+@api_router.get("/analysis/history/{history_id}")
+def get_analysis_history_detail(history_id: int, db: Session = Depends(get_db)):
+    h = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id).first()
+    if not h:
+        raise HTTPException(status_code=404, detail="Analysis history not found")
+    return {
+        "id": h.id,
+        "text": h.text,
+        "scan_result": h.scan_result,
+        "matched_cases": h.matched_cases,
+        "enterprise": h.enterprise,
+        "prediction": h.prediction,
+        "governance": h.governance,
+        "reasoning_chain": h.reasoning_chain,
+        "risk_level": h.risk_level,
+        "risk_type": h.risk_type,
+        "risk_score": h.risk_score,
+        "response_time_ms": h.response_time_ms,
+        "created_at": h.created_at.isoformat() if h.created_at else None,
+    }
+
+
+# ---- 高危事件实时卡片 ----
+
+@api_router.get("/dashboard/recent-high-risk")
+def recent_high_risk(db: Session = Depends(get_db)):
+    events = (
+        db.query(SentimentEvent)
+        .filter(
+            SentimentEvent.status == "processed",
+            SentimentEvent.risk_level.in_(["高", "极高"]),
+        )
+        .order_by(SentimentEvent.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    return [
+        {
+            "id": e.id,
+            "title": e.title,
+            "risk_level": e.risk_level,
+            "risk_type": e.risk_type,
+            "risk_score": e.risk_score,
+            "source": e.source,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in events
+    ]
+
+
+# ---- 数据导出 CSV ----
+
+@api_router.get("/sentiment/events/export/csv")
+def export_events_csv(db: Session = Depends(get_db)):
+    events = (
+        db.query(SentimentEvent)
+        .filter(SentimentEvent.status == "processed")
+        .order_by(SentimentEvent.created_at.desc())
+        .limit(5000)
+        .all()
+    )
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "标题", "来源", "风险等级", "风险类型", "风险评分", "关联企业", "时间"])
+    for e in events:
+        writer.writerow([
+            e.id,
+            e.title,
+            e.source or "",
+            e.risk_level or "",
+            e.risk_type or "",
+            e.risk_score,
+            e.enterprise_name or "",
+            e.created_at.isoformat() if e.created_at else "",
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=events_export.csv"},
+    )
+
+
+# ---- 企业风险趋势 ----
+
+@api_router.get("/enterprises/{enterprise_id}/trend")
+def get_enterprise_trend(enterprise_id: int, db: Session = Depends(get_db)):
+    ent = db.query(Enterprise).filter(Enterprise.id == enterprise_id).first()
+    if not ent:
+        raise HTTPException(status_code=404, detail="Enterprise not found")
+    now = datetime.now(UTC)
+    start = now - timedelta(days=30)
+    rows = (
+        db.query(
+            func.date(SentimentEvent.created_at).label("date"),
+            func.count(SentimentEvent.id).label("count"),
+            func.avg(SentimentEvent.risk_score).label("avg_score"),
+        )
+        .filter(
+            SentimentEvent.enterprise_id == enterprise_id,
+            SentimentEvent.status == "processed",
+            SentimentEvent.created_at >= start,
+        )
+        .group_by(func.date(SentimentEvent.created_at))
+        .order_by(func.date(SentimentEvent.created_at))
+        .all()
+    )
+    return [
+        {"date": str(r.date), "count": r.count, "avg_score": round(float(r.avg_score or 0), 2)}
+        for r in rows
+    ]
+
+
+# ---- 爬虫采集日志 ----
+
+@api_router.get("/crawler/logs")
+def get_crawler_logs(db: Session = Depends(get_db)):
+    logs = (
+        db.query(CrawlerLog)
+        .order_by(CrawlerLog.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        {
+            "id": log.id,
+            "fetched": log.fetched,
+            "cleaned": log.cleaned,
+            "persisted": log.persisted,
+            "deduped": log.deduped,
+            "sources_ok": log.sources_ok,
+            "sources_failed": log.sources_failed,
+            "error": log.error,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in logs
+    ]
